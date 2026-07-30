@@ -1,0 +1,122 @@
+# CloudBackup for Windows — Example Configuration File
+#
+# Copy this file to: config.yaml
+# Then edit the values to match your environment.
+#
+# IMPORTANT: Never share your config.yaml file publicly.
+# It may contain sensitive paths and encryption settings.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Database and State
+# ─────────────────────────────────────────────────────────────────────────────
+database:
+  db_path: C:\CloudBackup\catalog.db
+  backup_dir: C:\CloudBackup\catalog_backups
+  state_path: C:\CloudBackup\state.json
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cloud Drive Targets
+# Each remote is a pair: a base remote (e.g. gdrive1:) and a crypt remote.
+# The crypt remote is what actually stores your encrypted data.
+# ─────────────────────────────────────────────────────────────────────────────
+drives:
+  # When a drive reaches this fill percentage, rotation starts automatically.
+  default_threshold_percent: 95.0
+
+  remotes:
+    - name: gdrive1_crypt          # Name used in this application
+      base_remote: 'gdrive1:'      # Must match rclone.conf section name
+      provider: drive              # Options: drive, onedrive, msteams
+      enabled: true
+      priority: 1                  # Lower number = higher priority
+      fill_threshold_percent: 95.0
+
+    - name: gdrive2_crypt
+      base_remote: 'gdrive2:'
+      provider: drive
+      enabled: true
+      priority: 2
+      fill_threshold_percent: 95.0
+
+    - name: onedrive1_crypt
+      base_remote: 'onedrive1:'
+      provider: onedrive
+      enabled: true
+      priority: 3
+      fill_threshold_percent: 95.0
+
+  # Space to keep free on each drive (as a safety buffer)
+  reserve_margin_percent: 5.0
+  reserve_margin_bytes: 10737418240   # 10 GB
+
+# ─────────────────────────────────────────────────────────────────────────────
+# rclone Transfer Settings
+# ─────────────────────────────────────────────────────────────────────────────
+rclone:
+  tpslimit: 10          # Transactions per second limit (Google Drive API)
+  tpslimit_burst: 10
+  transfers: 4          # Number of parallel file transfers
+  checkers: 8           # Number of parallel file checkers
+  drive_chunk_size: 64M # Upload chunk size
+  fast_list: true       # Use fewer API calls when listing files
+  retries: 5
+  low_level_retries: 10
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backup Source Hosts
+# List the computers and file paths you want to back up.
+# ─────────────────────────────────────────────────────────────────────────────
+hosts:
+  - name: my-windows-server        # Friendly name for this host
+    enabled: true
+    sources:
+      - name: AppData
+        priority: 1
+        path: C:\ProgramData\MyApp
+        category: system_state     # system_state | snapraid_settings | storage_media | database_catalog
+        enabled: true
+        include_patterns:
+          - '*.json'
+          - '*.yaml'
+          - '*.xml'
+        exclude_patterns:
+          - '*.tmp'
+          - '*.log'
+
+      - name: StorageFiles
+        priority: 2
+        path: D:\Storage
+        category: storage_media
+        enabled: true
+        include_patterns:
+          - '*'
+        exclude_patterns:
+          - '*.tmp'
+          - '$RECYCLE.BIN'
+
+  - name: my-windows-pc
+    enabled: true
+    sources:
+      - name: Documents
+        priority: 1
+        path: C:\Users\YourUser\Documents
+        category: storage_media
+        enabled: true
+        include_patterns:
+          - '*'
+        exclude_patterns:
+          - '*.tmp'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Restore Testing (optional)
+# ─────────────────────────────────────────────────────────────────────────────
+restore_testing:
+  staging_dir: C:\Temp\restore_test
+  auto_cleanup: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Logging
+# ─────────────────────────────────────────────────────────────────────────────
+logging:
+  file_path: C:\CloudBackup\backup.log
+  level: INFO              # DEBUG | INFO | WARNING | ERROR

@@ -1,0 +1,19 @@
+# CloudBackup for Windows — Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# YAML configuration file parsing
+PyYAML>=6.0
+
+# HTTP requests (for cloud API queries)
+requests>=2.31.0
+
+# Cryptography (for key derivation and local operations)
+cryptography>=41.0.0
+
+# SQLite is built into Python — no additional package needed
+
+# Optional: colorful terminal output
+colorama>=0.4.6
+
+# Optional: better progress bars
+tqdm>=4.66.0

@@ -1,0 +1,107 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudBackup for Windows — .gitignore
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ────────────────────────────
+# Secret and Private Config
+# ────────────────────────────
+config.yaml              # Your personal configuration — NEVER commit this
+*.key                    # Encryption keys
+*.pem                    # TLS/SSL certificates
+*.env                    # Environment variable files
+.env*
+
+# ────────────────────────────
+# rclone Secrets
+# ────────────────────────────
+rclone.conf              # Contains OAuth tokens and remote configs
+.rclone.conf
+
+# ────────────────────────────
+# Database and State Files
+# ────────────────────────────
+*.db                     # SQLite databases (may contain file path metadata)
+*.db-journal
+state.json               # Runtime state file
+state.json.bak
+
+# ────────────────────────────
+# Log Files
+# ────────────────────────────
+*.log
+logs/
+
+# ────────────────────────────
+# Backup Catalog Directories
+# ────────────────────────────
+catalog_backups/
+restore_test/
+
+# ────────────────────────────
+# Python
+# ────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ────────────────────────────
+# Python Test Artifacts
+# ────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ────────────────────────────
+# IDEs and Editors
+# ────────────────────────────
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*~
+
+# ────────────────────────────
+# macOS
+# ────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ────────────────────────────
+# Windows
+# ────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ────────────────────────────
+# Temporary Files
+# ────────────────────────────
+*.tmp
+*.bak
+*.temp
+tmp/
+temp/
