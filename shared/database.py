@@ -269,7 +269,8 @@ def add_job(data: dict, db_path: str = DEFAULT_DB_PATH) -> int:
                target_count,enabled,extra_flags,pre_hook,notify_on_failure,notify_on_success,notes)
                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                data["name"], data.get("host", "linux"), data["data_class"],
+                data["name"], data.get("host", "supermicro.local"), data["data_class"],
+
                 data.get("remote_id"), data.get("mode", "copy"),
                 data.get("schedule_cron"), int(data.get("target_count", 2)), 1,
                 json.dumps(data.get("extra_flags", [])),
