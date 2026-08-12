@@ -1,0 +1,127 @@
+================================================================================
+                    ADC BACKUP SYSTEM — GROUND-ZERO RESTORE GUIDE
+================================================================================
+DOCUMENT TYPE: Plaintext Unencrypted Ground-Zero Recovery Reference
+STORAGE LOCATION: Google Drive Root (gdrive1:BOOTSTRAP.txt)
+TARGET PATHS: /opt/adc-backup/
+
+In the event of complete system loss or disaster recovery, follow these steps in
+sequence to restore all services, secrets, configuration, and data.
+
+--------------------------------------------------------------------------------
+STAGE 0: PREREQUISITES
+--------------------------------------------------------------------------------
+Before beginning recovery, ensure you have:
+  1. A fresh Linux installation (Ubuntu 22.04 LTS / 24.04 LTS recommended) with
+     root or sudo privileges.
+  2. Active internet connectivity.
+  3. Access to your master password manager containing:
+     - Google Account OAuth credentials / recovery access
+     - Rclone crypt passphrase (for gdrive1_crypt / gdrive1_secrets_crypt)
+     - SSH key passphrases & database passwords
+  4. Basic build dependencies:
+     apt update && apt install -y python3 python3-pip git curl rsync unzip sqlite3
+
+--------------------------------------------------------------------------------
+STAGE 1: BOOTSTRAP RCLONE & OAUTH
+--------------------------------------------------------------------------------
+1. Install official rclone binary:
+   curl https://rclone.org/install.sh | bash
+
+2. Re-create base rclone remote setup (gdrive1):
+   rclone config
+   - Name: gdrive1
+   - Type: drive (Google Drive)
+   - Scope: drive (Full access)
+   - Run interactive OAuth authorization:
+     rclone authorize "drive"
+
+3. Re-create crypt remotes using passphrases from password manager:
+   - Name: gdrive1_crypt (type: crypt, remote: gdrive1:backup)
+   - Name: gdrive1_secrets_crypt (type: crypt, remote: gdrive1:secrets)
+
+4. Verify remote access:
+   rclone lsd gdrive1_crypt:
+   rclone lsd gdrive1_secrets_crypt:
+
+--------------------------------------------------------------------------------
+STAGE 2: RESTORE PACKAGE LIST
+--------------------------------------------------------------------------------
+1. Create system directory:
+   mkdir -p /opt/adc-backup
+
+2. Download package definitions from crypt remote:
+   rclone copy gdrive1_crypt:linux/packages /opt/adc-backup/packages
+
+3. Restore Debian/Ubuntu packages:
+   dpkg --set-selections < /opt/adc-backup/packages/dpkg-selections.txt
+   apt-get dselect-upgrade -y
+
+4. Restore Python virtual environments / pip packages:
+   pip3 install -r /opt/adc-backup/packages/requirements.txt
+
+--------------------------------------------------------------------------------
+STAGE 3: RESTORE CONFIGURATION
+--------------------------------------------------------------------------------
+1. Restore core application and system configuration:
+   rclone copy gdrive1_crypt:linux/config /etc
+
+2. Restore ADC Backup System configuration:
+   rclone copy gdrive1_crypt:linux/adc-config /opt/adc-backup/
+
+3. Verify configuration integrity:
+   ls -la /opt/adc-backup/config.yaml
+
+--------------------------------------------------------------------------------
+STAGE 4: RESTORE DATABASES
+--------------------------------------------------------------------------------
+1. Restore SQLite state database:
+   rclone copy gdrive1_crypt:linux/database /opt/adc-backup/
+   sqlite3 /opt/adc-backup/state.db "PRAGMA integrity_check;"
+
+2. Restore MySQL / MariaDB (if applicable):
+   rclone copy gdrive1_crypt:linux/mysql /tmp/mysql_backup
+   mysql -u root -p < /tmp/mysql_backup/all_databases.sql
+   rm -rf /tmp/mysql_backup
+
+--------------------------------------------------------------------------------
+STAGE 5: RESTORE SECRETS
+--------------------------------------------------------------------------------
+1. Restore high-security secrets from dedicated secrets crypt remote:
+   rclone copy gdrive1_secrets_crypt:linux/secrets /
+
+2. Enforce strict permissions on sensitive files:
+   chmod 600 /etc/ssl/private/* 2>/dev/null || true
+   chmod 700 /root/.ssh
+   chmod 600 /root/.ssh/authorized_keys /root/.ssh/id_* 2>/dev/null || true
+   chmod 600 /opt/adc-backup/rclone.conf
+   chmod 600 /opt/adc-backup/auth.json 2>/dev/null || true
+
+--------------------------------------------------------------------------------
+STAGE 6: SERVICE RESTORATION
+--------------------------------------------------------------------------------
+1. Reload systemd daemon:
+   systemctl daemon-reload
+
+2. Enable and start core infrastructure services:
+   systemctl enable --now tailscaled
+   systemctl enable --now nginx 2>/dev/null || true
+   systemctl enable --now mysql 2>/dev/null || true
+
+3. Verify Tailscale mesh network status:
+   tailscale status
+
+--------------------------------------------------------------------------------
+STAGE 7: BACKUP SYSTEM SELF-RESTORE
+--------------------------------------------------------------------------------
+1. Restore systemd unit file for ADC Backup:
+   cp /opt/adc-backup/systemd/adc-backup.service /etc/systemd/system/
+   systemctl daemon-reload
+   systemctl enable --now adc-backup.service
+
+2. Verify service health and access UI:
+   systemctl status adc-backup.service
+   curl -I http://127.0.0.1:8080/health
+
+3. Re-verify Google Drive connection and token status in the ADC Backup UI.
+================================================================================

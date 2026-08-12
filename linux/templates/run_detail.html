@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Run #{{ run.id }} Detail — ADC Backup{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+  <h2>Run #{{ run.id }} — {{ run.job_name }}</h2>
+  <span class="badge badge-{{ run.status }}">{{ run.status }}</span>
+</div>
+
+<div class="card" style="margin-bottom: 1.5rem;">
+  <h3>Execution Metadata</h3>
+  <p><strong>Job Class:</strong> {{ run.data_class }}</p>
+  <p><strong>Triggered By:</strong> {{ run.triggered_by }}</p>
+  <p><strong>Started:</strong> {{ run.started_at }}</p>
+  <p><strong>Finished:</strong> {{ run.finished_at or 'Running...' }}</p>
+  <p><strong>Exit Code:</strong> {{ run.exit_code if run.exit_code is not none else 'N/A' }}</p>
+  <p><strong>Parent Manifest Log Path:</strong> <code>{{ run.log_path }}</code></p>
+</div>
+
+{% if targets %}
+<div class="card" style="margin-bottom: 1.5rem;">
+  <h3>Parallel Target Streams (Destination Tracking)</h3>
+  <table class="table" style="width: 100%; border-collapse: collapse; text-align: left; margin-top: 1rem;">
+    <thead>
+      <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">
+        <th style="padding: 10px;">Target Remote</th>
+        <th style="padding: 10px;">Role</th>
+        <th style="padding: 10px;">Status</th>
+        <th style="padding: 10px;">Exit Code</th>
+        <th style="padding: 10px;">Transferred</th>
+        <th style="padding: 10px;">Log Path</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in targets %}
+      <tr style="border-bottom: 1px solid var(--border-color);">
+        <td style="padding: 10px;"><strong>{{ t.remote_name }}</strong> (<code>{{ t.crypt_remote }}</code>)</td>
+        <td style="padding: 10px;"><span class="badge" style="background: #334155; color: #fff;">{{ t.role | upper }}</span></td>
+        <td style="padding: 10px;"><span class="badge badge-{{ t.status }}">{{ t.status }}</span></td>
+        <td style="padding: 10px;">{{ t.exit_code if t.exit_code is not none else 'Pending' }}</td>
+        <td style="padding: 10px;">{{ t.files_transferred or 0 }} files</td>
+        <td style="padding: 10px;"><code>{{ t.log_path }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>Log Tail (Consolidated Worker Stream Logs)</h3>
+  <pre style="background: #0f172a; padding: 1rem; border-radius: 0.375rem; overflow-x: auto; color: var(--text-secondary); max-height: 450px; font-family: monospace; font-size: 0.825rem; white-space: pre-wrap;">
+{% for line in log_tail %}{{ line }}
+{% else %}No log lines found. Currently initializing...{% endfor %}
+  </pre>
+</div>
+{% endblock %}
+

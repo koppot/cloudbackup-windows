@@ -1,0 +1,96 @@
+# ==============================================================================
+# ADC Backup System — Configuration Example
+# WARNING: Copy this file to config.yaml. Never commit config.yaml to version control.
+# ==============================================================================
+
+# Path to the rclone configuration file.
+# Contains Google Drive OAuth tokens and crypt keys.
+rclone_conf: "/opt/adc-backup/rclone.conf"
+
+# Hostname identifier for this machine.
+# Used in remote path structure: <base_remote>/<hostname>/<data_class>/
+hostname: "linux"
+
+# Database & State File Paths
+database:
+  db_path: "/opt/adc-backup/state.db"
+  backup_dir: "/opt/adc-backup/catalog_backups"
+  state_path: "/opt/adc-backup/state.json"
+
+# Drive Remotes and Storage Pool Configuration
+drives:
+  # Reserve margins: rotate drive before it hits 100% full
+  reserve_margin_percent: 5.0
+  reserve_margin_bytes: 10737418240  # 10 GB in bytes
+
+  # Ordered list of target storage remotes
+  remotes:
+    - name: "gdrive1_crypt"
+      base_remote: "gdrive1:"
+      crypt_remote: "gdrive1_crypt:"
+      secrets_crypt_remote: "gdrive1_secrets_crypt:"
+      priority: 1
+      enabled: true
+      data_subdir: "backup"
+      secrets_subdir: "secrets"
+
+    - name: "gdrive2_crypt"
+      base_remote: "gdrive2:"
+      crypt_remote: "gdrive2_crypt:"
+      secrets_crypt_remote: "gdrive2_secrets_crypt:"
+      priority: 2
+      enabled: true
+      data_subdir: "backup"
+      secrets_subdir: "secrets"
+
+# rclone Subprocess Execution & Performance Tuning
+rclone:
+  bin: "rclone"
+  tpslimit: 10
+  transfers: 4
+  checkers: 8
+  drive_chunk_size: "64M"
+  fast_list: true
+  retries: 5
+  stats_interval: "30s"
+
+# Configured Source Hosts and Backup Folders
+hosts:
+  - name: "linux"
+    enabled: true
+    sources:
+      - name: "system_config"
+        path: "/etc"
+        priority: 1
+        enabled: true
+        include_patterns: []
+        exclude_patterns:
+          - "*.tmp"
+          - "*.bak"
+
+      - name: "adc_backup_system"
+        path: "/opt/adc-backup"
+        priority: 2
+        enabled: true
+        include_patterns: []
+        exclude_patterns:
+          - "logs/*"
+          - "*.db-journal"
+
+# Secrets Class Configuration
+secrets:
+  class_file: "/opt/adc-backup/secrets_class.yaml"
+  key_hint: "See password manager: adc-backup-secrets-2026"
+
+# Server UI & API Bindings
+server:
+  host: "auto"  # "auto" binds to Tailscale IP (100.x.x.x)
+  port: 8080
+  tailscale_only: true
+  debug: false
+  log_dir: "/opt/adc-backup/logs"
+
+# Automated Restore Testing Configuration
+restore_testing:
+  staging_dir: "/tmp/adc_restore_test"
+  auto_cleanup: true

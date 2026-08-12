@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Encrypted Multi-Cloud Backup Controller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0a;
+      --bg-card: #141414;
+      --bg-card-secondary: #1e1e1e;
+      --bg-card-hover: #262626;
+      --accent-silver: #f5f5f5;
+      --accent-gray: #a3a3a3;
+      --accent-dark: #262626;
+      --text-main: #f5f5f5;
+      --text-muted: #888888;
+      --border-color: #262626;
+      --border-color-light: #404040;
+      --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(255, 255, 255, 0.03) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(255, 255, 255, 0.02) 0px, transparent 50%);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      line-height: 1.5;
+      padding: 24px;
+      min-height: 100vh;
+    }
+
+    .user-avatar, td img, .account-avatar {
+      filter: none !important;
+      -webkit-filter: none !important;
+    }
+
+    .container { max-width: 1440px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+    
+    header {
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;
+      background: rgba(20, 20, 20, 0.9); backdrop-filter: blur(12px); padding: 20px 28px; border-radius: 14px;
+      border: 1px solid var(--border-color-light); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    .header-title h1 { font-size: 1.6rem; font-weight: 800; color: var(--text-main); letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
+    .header-title p { font-size: 0.875rem; color: var(--text-muted); margin-top: 2px; }
+    .header-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 20px; font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+      background: #262626; color: #f5f5f5; border: 1px solid #525252;
+    }
+    .badge-active { background: #262626; color: #ffffff; border: 1px solid #737373; }
+    .badge-paused { background: #1a1a1a; color: #a3a3a3; border: 1px solid #404040; }
+    .badge-target { background: #333333; color: #ffffff; border: 1px solid #a3a3a3; }
+
+    .card {
+      background: rgba(20, 20, 20, 0.85); backdrop-filter: blur(12px); border-radius: 14px; padding: 24px;
+      border: 1px solid var(--border-color-light); display: flex; flex-direction: column; gap: 18px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+    .card-title { font-size: 1.15rem; font-weight: 700; display: flex; justify-content: space-between; align-items: center; color: #ffffff; }
+
+    .action-bar { display: flex; flex-wrap: wrap; gap: 12px; }
+    button, .btn {
+      background: #1e1e1e; color: var(--text-main); border: 1px solid var(--border-color-light);
+      padding: 10px 18px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px; transition: all 0.2s ease;
+    }
+    button:hover, .btn:hover { background: #333333; border-color: #737373; }
+    button.btn-primary { background: linear-gradient(135deg, #404040 0%, #171717 100%); color: #ffffff; border-color: #737373; }
+    button.btn-primary:hover { background: linear-gradient(135deg, #525252 0%, #262626 100%); border-color: #a3a3a3; }
+    button.btn-warning { background: #1e1e1e; color: #d4d4d4; border-color: #525252; }
+    button.btn-danger { background: #262626; color: #f5f5f5; border-color: #737373; }
+    button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .btn-action {
+      padding: 5px 10px; font-size: 0.75rem; font-weight: 600; border-radius: 6px;
+      border: 1px solid var(--border-color-light); background: #1e1e1e;
+      color: var(--text-main); transition: all 0.15s ease; white-space: nowrap; cursor: pointer;
+    }
+    .btn-auth { color: #f5f5f5; border-color: #525252; background: #262626; }
+    .btn-auth:hover { background: #404040; border-color: #a3a3a3; }
+    .btn-test { color: #d4d4d4; background: #1a1a1a; }
+    .btn-test:hover { background: #333333; }
+    .btn-group-priority {
+      display: inline-flex; border: 1px solid var(--border-color-light); border-radius: 6px; overflow: hidden; background: #0a0a0a;
+    }
+    .btn-prio {
+      padding: 5px 8px; border: none; border-radius: 0; background: transparent; color: #a3a3a3; font-size: 0.75rem; cursor: pointer;
+    }
+    .btn-prio:hover:not(:disabled) { background: #333333; color: #ffffff; }
+    .btn-prio:disabled { opacity: 0.25; cursor: not-allowed; }
+    .btn-danger-icon { color: #ffffff; border-color: #525252; background: #262626; padding: 5px 8px; }
+    .btn-danger-icon:hover { background: #404040; border-color: #737373; }
+
+    .table-container { width: 100%; overflow-x: auto; border-radius: 8px; border: 1px solid var(--border-color-light); }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { padding: 14px 14px; border-bottom: 1px solid var(--border-color); font-size: 0.85rem; vertical-align: middle; }
+    th { color: var(--text-muted); font-weight: 700; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.06em; background: #0c0c0c; }
+    tbody tr:nth-child(odd) td { background-color: #121212; }
+    tbody tr:nth-child(even) td { background-color: #1e1e1e; }
+    tbody tr:hover td { background-color: #2c2c2c !important; }
+    tr:last-child td { border-bottom: none; }
+
+    .capacity-bar-bg { width: 100%; height: 7px; background: #262626; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+    .capacity-bar-fill { height: 100%; background: linear-gradient(90deg, #e5e5e5, #737373); border-radius: 4px; transition: width 0.3s ease; }
+
+    .console-box {
+      background: #050505; border-radius: 8px; padding: 16px; font-family: var(--font-mono);
+      font-size: 0.8125rem; color: #e5e5e5; height: 220px; overflow-y: auto; white-space: pre-wrap;
+      border: 1px solid #262626; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+    }
+
+    .switch { position: relative; display: inline-block; width: 38px; height: 20px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #333333; transition: .2s; border-radius: 20px;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px;
+      background-color: #e5e5e5; transition: .2s; border-radius: 50%;
+    }
+    input:checked + .slider { background-color: #737373; }
+    input:checked + .slider:before { transform: translateX(18px); background-color: #ffffff; }
+
+    .modal-overlay {
+      position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0, 0, 0, 0.88); backdrop-filter: blur(8px);
+      display: none; justify-content: center; align-items: center; z-index: 100;
+    }
+    .modal {
+      background: #141414; border-radius: 14px; padding: 26px; width: 560px; max-width: 92vw;
+      border: 1px solid var(--border-color-light); display: flex; flex-direction: column; gap: 16px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
+    }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 0.8125rem; color: var(--text-muted); font-weight: 500; }
+    .form-group input {
+      background: #0a0a0a; border: 1px solid var(--border-color-light); color: var(--text-main);
+      padding: 10px 14px; border-radius: 6px; font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="header-title">
+        <h1>⚡ Encrypted Multi-Cloud Backup Controller</h1>
+        <p>Zero-Knowledge AES-256 Cloud Backup Rotation • Google Drive, Microsoft OneDrive & Teams</p>
+      </div>
+      <div class="header-status">
+        <span id="target-drive-badge" class="badge badge-target">Target: Loading...</span>
+        <span id="system-state-badge" class="badge badge-active">System Active</span>
+      </div>
+    </header>
+
+    <!-- Quick Action Controls & Destination Mode Selection -->
+    <div class="card">
+      <div class="card-title">
+        <span>⚡ Quick Operational Controls & Destination Mode</span>
+        <span id="job-spinner" style="font-size: 0.8125rem; color: #a3a3a3; display: none;">⏳ Job Executing...</span>
+      </div>
+
+      <!-- Explicit Backup Mode Selector -->
+      <div style="background: #0a0a0a; border: 1px solid #333333; padding: 14px 18px; border-radius: 10px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="font-size: 0.8125rem; font-weight: 700; color: #e5e5e5; text-transform: uppercase; letter-spacing: 0.05em;">🎯 Backup Destination Mode Selection</div>
+        <div style="display: flex; gap: 24px; flex-wrap: wrap; align-items: center;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.875rem; cursor: pointer; color: #f5f5f5;">
+            <input type="radio" name="run_target_mode" value="single" checked style="accent-color: #38bdf8; width: 16px; height: 16px;">
+            <strong>Single Remote Target</strong> (Primary Active Drive)
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.875rem; cursor: pointer; color: #f5f5f5;">
+            <input type="radio" name="run_target_mode" value="dual" style="accent-color: #38bdf8; width: 16px; height: 16px;">
+            <strong style="color: #38bdf8;">⚡ Parallel Dual-Account Target</strong> (Primary #1 + Secondary #2 Concurrent Replication)
+          </label>
+        </div>
+        <div style="font-size: 0.75rem; color: #888888; display: flex; align-items: center; gap: 6px;">
+          <span>ℹ️</span> <em>Source deduplication runs <strong>once</strong> per job. The single scanned manifest is reused across both destinations automatically.</em>
+        </div>
+      </div>
+
+      <div class="action-bar">
+        <button id="btn-run" class="btn-primary" onclick="triggerAction('run')">🚀 Run Backup Now</button>
+        <button id="btn-dry-run" onclick="triggerAction('dry-run')">🔍 Dry Run</button>
+        <button id="btn-pause-resume" class="btn-warning" onclick="togglePauseResume()">⏸️ Pause Backup</button>
+        <button onclick="openWizardModal()">🧙‍♂️ Add Cloud Target</button>
+        <button onclick="triggerAction('verify')">🛡️ Verify Integrity</button>
+        <button onclick="triggerAction('restore-test')">🧪 Run Restore Test</button>
+        <button onclick="refreshAll()">🔄 Refresh Status</button>
+      </div>
+    </div>
+
+
+    <!-- Cloud Drive Management Section -->
+    <div class="card">
+      <div class="card-title">
+        <span>Cloud Target Remotes (Google Drive, Microsoft OneDrive & Teams)</span>
+        <button class="btn-primary" style="padding: 7px 16px; font-size: 0.8125rem;" onclick="openWizardModal()">+ Add Remote</button>
+      </div>
+
+      <!-- Global Fill Threshold Setting Bar -->
+      <div style="background: #0a0a0a; border: 1px solid var(--border-color-light); padding: 14px 18px; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 1.2rem;">⚖️</span>
+          <div>
+            <strong style="font-size: 0.875rem; color: var(--text-main);">Automatic Capacity Fill & Rotation Threshold</strong>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Backups automatically rotate to the next drive when active drive reaches capacity % limit.</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span style="font-size: 0.8125rem; color: var(--text-muted); font-weight: 600;">Quick Presets:</span>
+          <button style="padding: 4px 10px; font-size: 0.75rem; background: #1a1a1a; color: #e5e5e5; border: 1px solid #404040;" onclick="setAllThresholds(1)">Set All 1%</button>
+          <button style="padding: 4px 10px; font-size: 0.75rem; background: #1a1a1a; color: #e5e5e5; border: 1px solid #404040;" onclick="setAllThresholds(5)">Set All 5%</button>
+          <button style="padding: 4px 10px; font-size: 0.75rem; background: #1a1a1a; color: #e5e5e5; border: 1px solid #404040;" onclick="setAllThresholds(10)">Set All 10%</button>
+          <button style="padding: 4px 10px; font-size: 0.75rem; background: #1a1a1a; color: #e5e5e5; border: 1px solid #404040;" onclick="setAllThresholds(90)">Set All 90%</button>
+          <button style="padding: 4px 10px; font-size: 0.75rem; background: #262626; color: #ffffff; border: 1px solid #737373;" onclick="setAllThresholds(95)">Set All 95% (Recommended)</button>
+          <button style="padding: 4px 10px; font-size: 0.75rem; background: #1a1a1a; color: #e5e5e5; border: 1px solid #404040;" onclick="setAllThresholds(98)">Set All 98%</button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 140px;">Priority</th>
+              <th style="width: 140px;">Crypt Remote</th>
+              <th style="width: 110px;">Base Remote</th>
+              <th style="min-width: 240px;">Accounts</th>
+              <th style="width: 170px;">Status / Target</th>
+              <th style="min-width: 200px;">Capacity (Free / Total)</th>
+              <th style="width: 120px;">Max Threshold</th>
+              <th style="width: 90px; text-align: center;">Enabled</th>
+              <th style="width: 220px; text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="drives-table-body">
+            <tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 24px;">Loading cloud drive remotes...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Backup Sources & Content Category Management -->
+    <div class="card">
+      <div class="card-title">
+        <span>Backup Sources & File Category Filters</span>
+        <button class="btn-primary" style="padding: 7px 16px; font-size: 0.8125rem;" onclick="openAddSourceModal()">+ Add Backup Source / Path</button>
+      </div>
+      
+      <!-- Category Badges / Presets -->
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <div style="background: #141414; border: 1px solid var(--border-color-light); padding: 12px 16px; border-radius: 10px; flex: 1; min-width: 220px;">
+          <div style="font-weight: 700; color: #f5f5f5; font-size: 0.875rem;">💻 Operating System & State</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">System configs, drivers, registry exports, Windows user profile data.</div>
+        </div>
+        <div style="background: #141414; border: 1px solid var(--border-color-light); padding: 12px 16px; border-radius: 10px; flex: 1; min-width: 220px;">
+          <div style="font-weight: 700; color: #f5f5f5; font-size: 0.875rem;">⚙️ SnapRAID & Settings</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">SnapRAID parity config, .content files, app settings (*.conf, *.xml, *.yaml).</div>
+        </div>
+        <div style="background: #141414; border: 1px solid var(--border-color-light); padding: 12px 16px; border-radius: 10px; flex: 1; min-width: 220px;">
+          <div style="font-weight: 700; color: #f5f5f5; font-size: 0.875rem;">💾 Storage Files & Media</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">DrivePool landing tier (V:\), data disks (Z:\), media & archives.</div>
+        </div>
+        <div style="background: #141414; border: 1px solid var(--border-color-light); padding: 12px 16px; border-radius: 10px; flex: 1; min-width: 220px;">
+          <div style="font-weight: 700; color: #f5f5f5; font-size: 0.875rem;">🗄️ Database & Catalog</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">SQLite catalog databases (*.db, *.sqlite), SQL dumps, index files.</div>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Host</th>
+              <th>Category</th>
+              <th>Source Name</th>
+              <th>Drive / File Path</th>
+              <th>Include Patterns</th>
+              <th>Exclude Patterns</th>
+              <th>Enabled</th>
+              <th style="text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="sources-table-body">
+            <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">Loading backup sources...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Catalog & Snapshot History -->
+    <div class="card">
+      <div class="card-title">
+        <span>Snapshot Catalog History</span>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Snapshot ID</th>
+              <th>Created At</th>
+              <th>Files</th>
+              <th>Blobs</th>
+              <th>Uploaded</th>
+              <th>Deduplicated</th>
+              <th>Verified</th>
+              <th>Restore Test</th>
+            </tr>
+          </thead>
+          <tbody id="snapshots-table-body">
+            <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">Loading snapshot history...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- System Console & Logs -->
+    <div class="card">
+      <div class="card-title">
+        <span>Live Execution Log & Console</span>
+        <button onclick="loadLogs()" style="padding: 4px 10px; font-size: 0.75rem;">Clear / Reload</button>
+      </div>
+      <div id="console-output" class="console-box">Initializing system console log reader...</div>
+    </div>
+  </div>
+
+  <!-- Setup Wizard Modal -->
+  <div id="wizard-modal" class="modal-overlay">
+    <div class="modal">
+      <h3 style="font-size: 1.25rem; color: #ffffff;">🧙‍♂️ Add Encrypted Cloud Target</h3>
+      <p style="font-size: 0.875rem; color: var(--text-muted);">Select your cloud provider and automatically configure the next target slot for AES-256 encrypted backups.</p>
+
+      <!-- Cloud Provider Selection Toggle -->
+      <div style="display: flex; gap: 10px;">
+        <button id="provider-btn-drive" style="flex: 1; padding: 12px 6px; font-weight: 700; background: #262626; color: white; border: 1px solid #737373; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 0.8125rem;" onclick="selectProvider('drive')">
+          <span>🟢</span> Google Drive
+        </button>
+      </div>
+
+      <div style="background: #0a0a0a; border: 1px solid #404040; padding: 14px; border-radius: 8px;">
+        <div style="font-size: 0.75rem; color: #888888; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">Next Available Target Remote</div>
+        <div id="wizard-next-num-display" style="font-size: 1.15rem; font-weight: 700; color: #ffffff; margin-top: 4px;">Google Drive Target Remote</div>
+      </div>
+
+      <div style="background: #050505; border: 1px solid #262626; padding: 14px; border-radius: 8px; font-size: 0.8125rem; color: #a3a3a3; line-height: 1.5;">
+        <strong style="color: #f5f5f5;">Automatic Setup & Restoration Provision:</strong><br>
+        1. Click <strong>🚀 Add Cloud Remote & Launch OAuth</strong> below.<br>
+        2. Account Sign-In will automatically open in a new browser tab.<br>
+        3. Click <strong>ALLOW / ACCEPT</strong>.<br>
+        4. 💡 <em>If re-authorizing a previously removed drive, stored backups remain saved and immediately available for restoration!</em>
+      </div>
+
+      <div id="wizard-auth-container"></div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
+        <button onclick="closeWizardModal()">Cancel</button>
+        <button id="wizard-submit-btn" class="btn-primary" onclick="submitWizard()">🚀 Add Cloud Remote & Launch OAuth</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentState = {};
+    let drivesData = [];
+    let sourcesData = [];
+
+    async function fetchJSON(url, options = {}) {
+      try {
+        const res = await fetch(url, options);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        return await res.json();
+      } catch (err) {
+        console.error(`API Error (${url}):`, err);
+        throw err;
+      }
+    }
+
+    async function loadStatus() {
+      try {
+        const status = await fetchJSON('/api/status');
+        currentState = status;
+        
+        const stateBadge = document.getElementById('system-state-badge');
+        const pauseBtn = document.getElementById('btn-pause-resume');
+        if (status.system_state === 'PAUSED') {
+          stateBadge.textContent = 'System Paused';
+          stateBadge.className = 'badge badge-paused';
+          pauseBtn.textContent = '▶️ Resume Backup';
+          pauseBtn.className = 'btn-primary';
+        } else {
+          stateBadge.textContent = 'System Active';
+          stateBadge.className = 'badge badge-active';
+          pauseBtn.textContent = '⏸️ Pause Backup';
+          pauseBtn.className = 'btn-warning';
+        }
+
+        document.getElementById('target-drive-badge').textContent = `Target: ${(status.active_remote || {}).name || 'None'}`;
+        document.getElementById('job-spinner').style.display = (status.running_job || {}).active ? 'inline' : 'none';
+
+      } catch (err) {
+        document.getElementById('system-state-badge').textContent = 'Offline / Error';
+      }
+    }
+
+    async function loadDrives() {
+      try {
+        const data = await fetchJSON('/api/drives');
+        drivesData = data.remotes || [];
+        
+        const tbody = document.getElementById('drives-table-body');
+        if (tbody && tbody.contains(document.activeElement)) return;
+        
+        if (drivesData.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 24px;">No Google Drive remotes configured. Click "+ Add Remote" to configure one.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = drivesData.map((d, idx) => {
+          const fillThresh = d.fill_threshold_percent || 95.0;
+          const acc = d.account_info || {};
+          const pct = acc.pct_used || 0;
+          const total_gb = acc.total_gb || d.capacity_total_gb || 5120.0;
+          const used_gb = acc.used_gb || d.capacity_used_gb || 0.0;
+          const free_gb = acc.free_gb || Math.max(0, total_gb - used_gb);
+          
+          let statusBadge = '';
+          if (!d.enabled) {
+            statusBadge = '<span class="badge badge-paused">EXCLUDED</span>';
+          } else if (idx === 0) {
+            statusBadge = '<span class="badge badge-target">ACTIVE TARGET</span>';
+          } else {
+            statusBadge = '<span class="badge" style="background: #1a1a1a; color: #888888; border: 1px solid #333333;">STANDBY / READY</span>';
+          }
+
+          let priorityOptions = drivesData.map((_, pIdx) => {
+            const val = pIdx + 1;
+            const label = (val === 1) ? `Priority #1 (Primary)` : `Priority #${val}`;
+            return `<option value="${val}" ${d.priority === val ? 'selected' : ''}>${label}</option>`;
+          }).join('');
+
+          let accountIcon = acc.photoLink ? `<img class="account-avatar" src="${acc.photoLink}" style="width:24px; height:24px; border-radius:50%; object-fit:contain;">` : `<span style="font-size:1.1rem;">🟢</span>`;
+
+          return `
+            <tr style="${!d.enabled ? 'opacity: 0.5;' : ''}">
+              <td>
+                <select style="background: #0a0a0a; color: var(--text-main); border: 1px solid var(--border-color-light); border-radius: 6px; padding: 5px 8px; font-size: 0.8125rem; font-weight: 600;" onchange="setDrivePriority('${d.name}', this.value)">
+                  ${priorityOptions}
+                </select>
+              </td>
+              <td><strong style="color: #ffffff; font-size: 0.875rem;">${d.crypt_remote || d.name}</strong></td>
+              <td><code style="color: #e5e5e5; background: #1e1e1e; padding: 3px 6px; border-radius: 4px; border: 1px solid #333333;">${d.base_remote}</code></td>
+              <td>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  ${accountIcon}
+                  <div>
+                    <div style="font-weight: 700; font-size: 0.8125rem; color: #ffffff;">${acc.displayName || d.account_display_name || d.name}</div>
+                    <div style="font-size: 0.75rem; color: #a3a3a3;">${acc.email || d.authorized_email || 'Google Account'}</div>
+                  </div>
+                </div>
+              </td>
+              <td>${statusBadge}</td>
+              <td>
+                <div style="font-weight: 600; font-size: 0.8125rem;">${free_gb} GB free / ${total_gb} GB total (${pct}%)</div>
+                <div class="capacity-bar-bg"><div class="capacity-bar-fill" style="width: ${pct}%;"></div></div>
+              </td>
+              <td>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <input type="number" min="1" max="100" step="1" value="${fillThresh}" style="width: 55px; background: #0a0a0a; border: 1px solid var(--border-color-light); color: var(--text-main); padding: 4px 6px; border-radius: 6px; font-size: 0.8125rem; text-align: center; font-weight: 700;" onchange="setDriveThreshold(${d.id}, this.value)">
+                  <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">% Fill</span>
+                </div>
+              </td>
+              <td style="text-align: center;">
+                <label class="switch">
+                  <input type="checkbox" ${d.enabled ? 'checked' : ''} onchange="toggleDrive(${d.id})">
+                  <span class="slider"></span>
+                </label>
+              </td>
+              <td style="text-align: right;">
+                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                  <button class="btn-action btn-auth" onclick="reauthorizeDrive(${d.id})">🔑 Re-auth</button>
+                  <button class="btn-action btn-test" onclick="testDrive(${d.id})">🧪 Test</button>
+                  <button class="btn-action btn-danger-icon" onclick="removeDrive(${d.id})">🗑️</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Error loading drives:', err);
+      }
+    }
+
+    async function loadSources() {
+      try {
+        const data = await fetchJSON('/api/sources');
+        sourcesData = data.sources || [];
+        const tbody = document.getElementById('sources-table-body');
+        
+        if (sourcesData.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">No backup sources configured. Click "+ Add Backup Source" to add one.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = sourcesData.map(s => `
+          <tr style="${!s.enabled ? 'opacity: 0.5;' : ''}">
+            <td><strong style="color: #ffffff;">${s.host || 'supermicro.local'}</strong></td>
+            <td><span style="font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; background: #262626; color: #e5e5e5; border: 1px solid #525252; font-weight: 600;">${s.data_class}</span></td>
+            <td><strong>${s.name}</strong></td>
+            <td><code style="color: #f5f5f5;">${s.path}</code></td>
+            <td><code style="font-size: 0.75rem; color: #888888;">*</code></td>
+            <td><code style="font-size: 0.75rem; color: #a3a3a3;">*.tmp, *.bak</code></td>
+            <td>
+              <label class="switch">
+                <input type="checkbox" ${s.enabled ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
+            </td>
+            <td style="text-align: right;">
+              <form method="POST" action="/api/sources/remove" style="display:inline;">
+                <input type="hidden" name="name" value="${s.name}">
+                <button type="submit" class="btn-action btn-danger-icon">🗑️ Remove</button>
+              </form>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {}
+    }
+
+    function getSelectedTargetMode() {
+      const radios = document.getElementsByName('run_target_mode');
+      for (const r of radios) {
+        if (r.checked) return r.value;
+      }
+      return 'single';
+    }
+
+    async function triggerAction(action) {
+      try {
+        const isDual = getSelectedTargetMode() === 'dual';
+        if (action === 'run') {
+          await fetchJSON('/api/action/run', { method: 'POST', body: JSON.stringify({ dry_run: false, dual_account: isDual }) });
+        } else if (action === 'dry-run') {
+          await fetchJSON('/api/action/run', { method: 'POST', body: JSON.stringify({ dry_run: true, dual_account: isDual }) });
+        } else if (action === 'verify') {
+          await fetchJSON('/api/action/verify', { method: 'POST' });
+        } else if (action === 'restore-test') {
+          await fetchJSON('/api/action/restore-test', { method: 'POST' });
+        }
+        refreshAll();
+      } catch (err) {
+        alert(`Action failed: ${err.message}`);
+      }
+    }
+
+
+    async function togglePauseResume() {
+      try {
+        const isPaused = currentState.system_state === 'PAUSED';
+        const endpoint = isPaused ? '/api/action/resume' : '/api/action/pause';
+        await fetchJSON(endpoint, { method: 'POST' });
+        loadStatus();
+      } catch (err) {
+        alert(`Failed to toggle pause/resume: ${err.message}`);
+      }
+    }
+
+    async function setDriveThreshold(rid, threshold) {
+      const formData = new FormData();
+      formData.append('rid', rid);
+      formData.append('threshold', threshold);
+      await fetch('/api/drives/threshold', { method: 'POST', body: formData });
+      loadDrives();
+    }
+
+    async function setAllThresholds(fill_threshold_percent) {
+      const formData = new FormData();
+      formData.append('threshold', fill_threshold_percent);
+      await fetch('/api/drives/threshold', { method: 'POST', body: formData });
+      loadDrives();
+    }
+
+    async function toggleDrive(rid) {
+      const formData = new FormData();
+      formData.append('rid', rid);
+      await fetch('/api/drives/toggle', { method: 'POST', body: formData });
+      loadDrives();
+    }
+
+    async function testDrive(rid) {
+      const formData = new FormData();
+      formData.append('rid', rid);
+      const res = await fetchJSON('/api/drives/test', { method: 'POST', body: formData });
+      alert(res.message || 'Connection test finished.');
+    }
+
+    async function reauthorizeDrive(rid) {
+      const formData = new FormData();
+      formData.append('rid', rid);
+      const res = await fetchJSON('/api/drives/reauthorize', { method: 'POST', body: formData });
+      if (res.auth_url) {
+        window.open(res.auth_url, '_blank');
+        alert(`Re-authorization initiated!\nPlease sign in using the opened browser tab.`);
+      }
+    }
+
+    async function removeDrive(rid) {
+      if (!confirm('Remove this remote from active rotation? Backed-up data remains safe on Google Drive.')) return;
+      const formData = new FormData();
+      formData.append('rid', rid);
+      await fetch('/api/drives/remove', { method: 'POST', body: formData });
+      loadDrives();
+    }
+
+    function openWizardModal() { document.getElementById('wizard-modal').style.display = 'flex'; }
+    function closeWizardModal() { document.getElementById('wizard-modal').style.display = 'none'; }
+
+    async function submitWizard() {
+      const res = await fetchJSON('/api/drives/wizard', { method: 'POST' });
+      if (res.auth_url) {
+        window.open(res.auth_url, '_blank');
+        closeWizardModal();
+        alert(`OAuth wizard started! Please sign in using the opened browser tab.`);
+      }
+    }
+
+    function refreshAll() {
+      loadStatus();
+      loadDrives();
+      loadSources();
+    }
+
+    refreshAll();
+    setInterval(refreshAll, 5000);
+  </script>
+</body>
+</html>

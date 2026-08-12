@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Bootstrap Recovery — ADC Backup{% endblock %}
+
+{% block content %}
+<h2>Ground-Zero Bare-Metal Linux Recovery Guide</h2>
+<div class="card" style="margin-top: 1.5rem;">
+  <p style="margin-bottom: 1rem;">Follow these 7 ordered stages to rebuild this Linux host from scratch using only Google Drive:</p>
+  <ol style="padding-left: 1.5rem; line-height: 2;">
+    <td><strong>Stage 0: Prerequisites</strong> — Install OS, Tailscale, rclone; fetch crypt passphrases from 1Password.</td>
+    <td><strong>Stage 1: Authorize rclone</strong> — Add <code>gdrive1</code> base & crypt remotes via CLI.</td>
+    <td><strong>Stage 2: Restore Packages</strong> — Restore <code>dpkg --set-selections</code> & <code>pip freeze</code>.</td>
+    <td><strong>Stage 3: Restore Configs</strong> — Sync <code>/etc/</code> & application configs.</td>
+    <td><strong>Stage 4: Restore Database</strong> — Import MySQL snapshot dumps.</td>
+    <td><strong>Stage 5: Restore Secrets</strong> — Copy TLS certs, SSH keys, API keys with 600 permissions.</td>
+    <td><strong>Stage 6: Service Restoration</strong> — <code>systemctl daemon-reload</code> & enable services.</td>
+    <td><strong>Stage 7: Backup Self-Restore</strong> — Start UI, re-authorize remotes.</td>
+  </ol>
+</div>
+{% endblock %}

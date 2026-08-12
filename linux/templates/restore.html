@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Restore — ADC Backup{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+  <h2>Guided Restore Workflow</h2>
+  <a href="{{ url_for('restore.bootstrap') }}" class="btn btn-secondary">Ground-Zero Recovery Guide</a>
+</div>
+
+<div class="card" style="margin-bottom: 2rem;">
+  <h3>Initiate Restore from Backup Run</h3>
+  <form method="POST" action="{{ url_for('restore.new_restore') }}">
+    <div class="form-group">
+      <label>Select Backup Run</label>
+      <select id="source_run_id" name="source_run_id" class="form-control" onchange="loadTargetRemotes(this.value)" required>
+        <option value="">-- Choose a valid backup run --</option>
+        {% for run in runs %}
+        <option value="{{ run.id }}" data-class="{{ run.data_class }}">
+          Run #{{ run.id }} — {{ run.job_name }} ({{ run.data_class }}) — Status: {{ run.status.upper() }} ({{ run.started_at }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Select Verified Successful Target Drive Source</label>
+      <select id="remote_id" name="remote_id" class="form-control" required>
+        <option value="">-- Select a run above first --</option>
+        {% for r in remotes %}
+        <option value="{{ r.id }}">{{ r.name }} ({{ r.crypt_remote }})</option>
+        {% endfor %}
+      </select>
+      <small style="color: var(--text-secondary); display: block; margin-top: 0.25rem;">
+        Only destination drives that completed with status = 'SUCCESS' for this run are eligible.
+      </small>
+    </div>
+
+    <input type="hidden" id="data_class" name="data_class" value="config">
+
+    <div class="form-group">
+      <label>Local Staging Destination Path</label>
+      <input type="text" name="dest_path" class="form-control" placeholder="/tmp/adc-restore-staging">
+    </div>
+    <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">Create Restore Request</button>
+  </form>
+</div>
+
+<h3>Past Restores</h3>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Class</th>
+      <th>Destination</th>
+      <th>Dry-Run Done</th>
+      <th>Confirmed</th>
+      <th>Status</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in restores %}
+    <tr>
+      <td>#{{ r.id }}</td>
+      <td><span class="badge">{{ r.data_class }}</span></td>
+      <td><code>{{ r.dest_path }}</code></td>
+      <td>{{ 'Yes' if r.dry_run_done else 'No' }}</td>
+      <td>{{ 'Yes' if r.confirmed else 'No' }}</td>
+      <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+      <td><a href="{{ url_for('restore.detail', restore_id=r.id) }}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem;">View</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">No restores recorded.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+async function loadTargetRemotes(runId) {
+  if (!runId) return;
+  const select = document.getElementById('source_run_id');
+  const selectedOpt = select.options[select.selectedIndex];
+  if (selectedOpt && selectedOpt.dataset.class) {
+    document.getElementById('data_class').value = selectedOpt.dataset.class;
+  }
+
+  const res = await fetch(`{{ request.script_root }}/restore/targets/${runId}`);
+  if (!res.ok) return;
+  const targets = await res.json();
+  const remoteSelect = document.getElementById('remote_id');
+  remoteSelect.innerHTML = '';
+
+  if (targets.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.innerText = 'No successful drive targets available for this run';
+    remoteSelect.appendChild(opt);
+    return;
+  }
+
+  targets.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.remote_id;
+    opt.innerText = `${t.remote_name} (${t.crypt_remote}) — Verified Stream Success`;
+    remoteSelect.appendChild(opt);
+  });
+}
+</script>
+{% endblock %}
