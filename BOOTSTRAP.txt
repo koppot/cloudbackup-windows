@@ -56,7 +56,8 @@ STAGE 2: RESTORE PACKAGE & PYTHON ENVIRONMENT
    git clone https://github.com/koppot/cloudbackup-windows.git .
    python -m venv venv
    .\venv\Scripts\activate.bat
-   pip install -r requirements-windows.txt
+   pip install -r requirements.txt
+
 
 --------------------------------------------------------------------------------
 STAGE 3: RESTORE CONFIGURATION & STATE DATABASE

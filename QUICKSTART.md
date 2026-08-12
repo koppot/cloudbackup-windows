@@ -17,7 +17,9 @@ Install the required Python packages:
 
 ```cmd
 pip install -r requirements.txt
+
 ```
+
 
 ## 3. Start the dashboard
 

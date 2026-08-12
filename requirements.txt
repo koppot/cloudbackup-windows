@@ -1,11 +1,9 @@
-Flask>=3.0.0
-flask-session>=0.8.0
+# CloudBackup for Windows — Requirements
+
 pyotp>=2.9.0
 qrcode[pil]>=7.4.2
 bcrypt>=4.1.0
-APScheduler>=3.10.4
 PyYAML>=6.0.1
 python-dotenv>=1.0.1
 requests>=2.31.0
-Pillow>=10.0.0
 waitress>=3.0.0
