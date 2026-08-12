@@ -525,7 +525,8 @@ def get_audit_log(limit: int = 100, db_path: str = DEFAULT_DB_PATH) -> list[dict
 
 def get_dashboard_data(db_path: str = DEFAULT_DB_PATH, rclone_conf: Optional[str] = None) -> dict:
     if not rclone_conf:
-        rclone_conf = os.environ.get("RCLONE_CONF", "/opt/adc-backup/rclone.conf")
+        rclone_conf = os.environ.get("RCLONE_CONF", r"C:\ProgramData\CloudBackup\rclone.conf")
+
 
     from shared.google_account import fetch_google_account_info
 

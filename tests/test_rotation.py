@@ -108,8 +108,9 @@ class TestDriveRotation(unittest.TestCase):
         """Test that RcloneRunner.is_rotation_needed returns True when capacity is below threshold."""
         mock_cfg = MagicMock()
         mock_cfg.rclone.bin = "rclone"
-        mock_cfg.rclone_conf = "/opt/adc-backup/rclone.conf"
-        mock_cfg.server.log_dir = "/opt/adc-backup/logs"
+        mock_cfg.rclone_conf = r"C:\ProgramData\CloudBackup\rclone.conf"
+        mock_cfg.server.log_dir = r"C:\ProgramData\CloudBackup\logs"
+
         mock_cfg.rclone.base_flags.return_value = []
 
         runner = RcloneRunner(mock_cfg)
