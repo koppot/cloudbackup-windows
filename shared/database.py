@@ -1,6 +1,5 @@
 """
-shared/database.py — SQLite database access layer for ADC Backup System.
-Version 2.0: Multi-drive parallel replication & run_targets support.
+shared/database.py — SQLite database access layer for CloudBackup for Windows.
 """
 
 from __future__ import annotations
@@ -16,8 +15,9 @@ from typing import Any, Generator, Optional
 
 log = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = os.environ.get("DB_PATH", "/opt/adc-backup/db/state.db")
+DEFAULT_DB_PATH = os.environ.get("DB_PATH", r"C:\ProgramData\CloudBackup\state.db")
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
+
 
 
 def _now() -> str:

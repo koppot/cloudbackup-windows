@@ -71,7 +71,7 @@ class TestSchema(unittest.TestCase):
         remote_id = self.cursor.lastrowid
 
         self.cursor.execute(
-            "INSERT INTO jobs (name, host, data_class) VALUES ('job1', 'linux', 'config')"
+            "INSERT INTO jobs (name, host, data_class) VALUES ('job1', 'supermicro.local', 'config')"
         )
         job_id = self.cursor.lastrowid
 
@@ -98,7 +98,7 @@ class TestSchema(unittest.TestCase):
         remote_id = self.cursor.lastrowid
 
         self.cursor.execute(
-            "INSERT INTO jobs (name, host, data_class) VALUES ('job2', 'linux', 'data')"
+            "INSERT INTO jobs (name, host, data_class) VALUES ('job2', 'supermicro.local', 'data')"
         )
         job_id = self.cursor.lastrowid
 

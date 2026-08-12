@@ -1,14 +1,5 @@
 """
-shared/config.py — ADC Backup System configuration loader.
-
-Reads config.yaml and exposes strongly-typed dataclass objects.
-No secrets (passwords, tokens, passphrases) are stored here.
-Those live exclusively in rclone.conf and the password manager.
-
-Usage:
-    from shared.config import AppConfig
-    cfg = AppConfig.load("/opt/adc-backup/config.yaml")
-    print(cfg.database.db_path)
+shared/config.py — CloudBackup for Windows configuration loader.
 """
 
 from __future__ import annotations
@@ -32,9 +23,10 @@ except ImportError:
 
 @dataclass
 class DatabaseConfig:
-    db_path: str = "/opt/adc-backup/state.db"
-    backup_dir: str = "/opt/adc-backup/catalog_backups"
-    state_path: str = "/opt/adc-backup/state.json"
+    db_path: str = r"C:\ProgramData\CloudBackup\state.db"
+    backup_dir: str = r"C:\ProgramData\CloudBackup\catalog_backups"
+    state_path: str = r"C:\ProgramData\CloudBackup\state.json"
+
 
     @classmethod
     def from_dict(cls, d: dict) -> "DatabaseConfig":
@@ -196,7 +188,8 @@ class RcloneConfig:
 
 @dataclass
 class RestoreTestingConfig:
-    staging_dir: str = "/tmp/adc_restore_test"
+    staging_dir: str = r"C:\ProgramData\CloudBackup\temp"
+
     auto_cleanup: bool = True
 
     @classmethod
@@ -210,8 +203,8 @@ class RestoreTestingConfig:
 @dataclass
 class SecretsConfig:
     """References the secrets_class.yaml path; does NOT hold any secret values."""
-    class_file: str = "/opt/adc-backup/secrets_class.yaml"
-    key_hint: str = "See password manager: adc-backup-secrets"
+    class_file: str = r"C:\ProgramData\CloudBackup\secrets_class.yaml"
+    key_hint: str = "See password manager: secrets"
 
     @classmethod
     def from_dict(cls, d: dict) -> "SecretsConfig":
@@ -224,18 +217,18 @@ class SecretsConfig:
 @dataclass
 class ServerConfig:
     """UI server settings."""
-    host: str = "auto"      # "auto" = detect Tailscale IP at startup
-    port: int = 8080
-    tailscale_only: bool = True
+    host: str = "127.0.0.1"
+    port: int = 8765
+    tailscale_only: bool = False
     debug: bool = False
-    log_dir: str = "/opt/adc-backup/logs"
+    log_dir: str = r"C:\ProgramData\CloudBackup\logs"
 
     @classmethod
     def from_dict(cls, d: dict) -> "ServerConfig":
         return cls(
-            host=d.get("host", "auto"),
-            port=int(d.get("port", 8080)),
-            tailscale_only=bool(d.get("tailscale_only", True)),
+            host=d.get("host", "127.0.0.1"),
+            port=int(d.get("port", 8765)),
+            tailscale_only=bool(d.get("tailscale_only", False)),
             debug=bool(d.get("debug", False)),
             log_dir=d.get("log_dir", cls.__dataclass_fields__["log_dir"].default),
         )
@@ -265,7 +258,7 @@ class AppConfig:
         if not config_path.exists():
             raise FileNotFoundError(
                 f"Config file not found: {config_path}\n"
-                f"Copy config.yaml.example to {config_path} and edit it."
+                f"Create configuration at {config_path} and edit it."
             )
 
         with open(config_path, "r", encoding="utf-8") as fh:
@@ -274,7 +267,8 @@ class AppConfig:
         if not isinstance(raw, dict):
             raise ValueError(f"Config file is empty or invalid YAML: {config_path}")
 
-        rclone_conf = raw.get("rclone_conf", "/opt/adc-backup/rclone.conf")
+        rclone_conf = raw.get("rclone_conf", r"C:\ProgramData\CloudBackup\rclone.conf")
+
 
         return cls(
             rclone_conf=str(Path(rclone_conf).expanduser()),

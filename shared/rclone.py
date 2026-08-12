@@ -178,7 +178,7 @@ def detect_tailscale_ip() -> Optional[str]:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # Fallback: inspect network interfaces
+    # Fallback: inspect network interfaces (if fcntl is available)
     try:
         import socket
         import struct
@@ -186,7 +186,6 @@ def detect_tailscale_ip() -> Optional[str]:
 
         SIOCGIFADDR = 0x8915
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # Tailscale interface is typically named 'tailscale0' on Linux
         iface = b"tailscale0"
         result_bytes = fcntl.ioctl(
             s.fileno(), SIOCGIFADDR,
@@ -199,6 +198,7 @@ def detect_tailscale_ip() -> Optional[str]:
         pass
 
     return None
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

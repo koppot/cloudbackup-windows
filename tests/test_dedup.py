@@ -51,7 +51,8 @@ class TestFileDeduplication(unittest.TestCase):
     def test_first_scan_all_files_queued_for_upload(self) -> None:
         result = scan_and_deduplicate(
             source_paths=[str(self.file1), str(self.file2)],
-            host="linux",
+            host="supermicro.local",
+
             data_class="config",
             remote_id=1,
             db_path=self.db_path,
@@ -65,7 +66,8 @@ class TestFileDeduplication(unittest.TestCase):
         # First scan & save catalog
         res1 = scan_and_deduplicate(
             source_paths=[str(self.file1), str(self.file2)],
-            host="linux",
+            host="supermicro.local",
+
             data_class="config",
             remote_id=1,
             db_path=self.db_path,
@@ -75,7 +77,8 @@ class TestFileDeduplication(unittest.TestCase):
         # Second scan without modifying files
         res2 = scan_and_deduplicate(
             source_paths=[str(self.file1), str(self.file2)],
-            host="linux",
+            host="supermicro.local",
+
             data_class="config",
             remote_id=1,
             db_path=self.db_path,
@@ -89,7 +92,8 @@ class TestFileDeduplication(unittest.TestCase):
         # First scan & save catalog
         res1 = scan_and_deduplicate(
             source_paths=[str(self.file1)],
-            host="linux",
+            host="supermicro.local",
+
             data_class="config",
             remote_id=1,
             db_path=self.db_path,
@@ -101,7 +105,8 @@ class TestFileDeduplication(unittest.TestCase):
 
         res2 = scan_and_deduplicate(
             source_paths=[str(self.file1)],
-            host="linux",
+            host="supermicro.local",
+
             data_class="config",
             remote_id=1,
             db_path=self.db_path,
