@@ -255,7 +255,8 @@ class AppConfig:
     secrets: SecretsConfig
     server: ServerConfig
     restore_testing: RestoreTestingConfig
-    hostname: str = "linux"    # Used as top-level subdir on Drive: hostname/classname/
+    hostname: str = "supermicro.local"    # Used as top-level subdir on Drive: hostname/classname/
+
 
     @classmethod
     def load(cls, path: str) -> "AppConfig":

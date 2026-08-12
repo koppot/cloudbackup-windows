@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS remotes (
 -- Managed source paths per host and data class.
 CREATE TABLE IF NOT EXISTS sources (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    host             TEXT NOT NULL DEFAULT 'linux',
+    host             TEXT NOT NULL DEFAULT 'supermicro.local',
     name             TEXT NOT NULL,
     path             TEXT NOT NULL,
     data_class       TEXT NOT NULL DEFAULT 'config',  -- config|data|secrets|packages
@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS sources (
 CREATE TABLE IF NOT EXISTS jobs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT NOT NULL UNIQUE,
-    host            TEXT NOT NULL DEFAULT 'linux',
+    host            TEXT NOT NULL DEFAULT 'supermicro.local',
+
     data_class      TEXT NOT NULL,                   -- config|data|secrets|packages
     remote_id       INTEGER REFERENCES remotes(id) ON DELETE SET NULL,
     mode            TEXT NOT NULL DEFAULT 'copy',    -- copy (default) | sync (opt-in)

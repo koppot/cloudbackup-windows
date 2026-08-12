@@ -216,7 +216,7 @@ def reorder_remotes(ordered_ids: list[int], db_path: str = DEFAULT_DB_PATH) -> N
 
 # ─── sources ──────────────────────────────────────────────────────────────────
 
-def get_sources(host: str = "linux", db_path: str = DEFAULT_DB_PATH) -> list[dict]:
+def get_sources(host: str = "supermicro.local", db_path: str = DEFAULT_DB_PATH) -> list[dict]:
     with get_conn(db_path) as conn:
         return _rows(conn, "SELECT * FROM sources WHERE host=? ORDER BY data_class, priority, id", (host,))
 
@@ -228,7 +228,8 @@ def add_source(data: dict, db_path: str = DEFAULT_DB_PATH) -> int:
                include_patterns,exclude_patterns,notes)
                VALUES(?,?,?,?,?,?,?,?,?)""",
             (
-                data.get("host", "linux"), data["name"], data["path"],
+                data.get("host", "supermicro.local"), data["name"], data["path"],
+
                 data.get("data_class", "config"), data.get("priority", 2),
                 1,
                 json.dumps(data.get("include_patterns", ["*"])),
@@ -251,7 +252,7 @@ def delete_source(source_id: int, db_path: str = DEFAULT_DB_PATH) -> None:
 
 # ─── jobs ─────────────────────────────────────────────────────────────────────
 
-def get_jobs(host: str = "linux", db_path: str = DEFAULT_DB_PATH) -> list[dict]:
+def get_jobs(host: str = "supermicro.local", db_path: str = DEFAULT_DB_PATH) -> list[dict]:
     with get_conn(db_path) as conn:
         return _rows(conn, "SELECT j.*, r.name AS remote_name FROM jobs j LEFT JOIN remotes r ON r.id=j.remote_id WHERE j.host=? ORDER BY j.id", (host,))
 
