@@ -1,5 +1,5 @@
 """
-shared/validation.py — Non-Destructive Evidence Validation & DR Readiness Subsystem for ADC Backup.
+shared/validation.py — Non-Destructive Evidence Validation & DR Readiness Subsystem for CloudBackup for Windows.
 
 Strict Safety Contract:
 - Read-only toward backup data, source files, state.db, databases, services, and cloud remotes.
@@ -1437,7 +1437,8 @@ def generate_validation_report(
 
     json_text = json.dumps(sanitized_payload, indent=2, sort_keys=True) + "\n"
     ev_text = json.dumps(evidence_manifest_payload, indent=2, sort_keys=True) + "\n"
-    md_text = f"""# ADC Backup System — Disaster Recovery Readiness Audit Report
+    md_text = f"""# CloudBackup for Windows — Disaster Recovery Readiness Audit Report
+
 
 - **Report Timestamp**: {sanitized_payload['timestamp_utc']}
 - **Overall DR Drill Status**: `{sanitized_payload['overall_go_no_go']}`

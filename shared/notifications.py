@@ -20,7 +20,8 @@ def send_notification(subject: str, body: str, db, logger=None) -> None:
             msg = EmailMessage()
             msg.set_content(body)
             msg['Subject'] = subject
-            msg['From'] = smtp_from or smtp_user or 'adc-backup@localhost'
+            msg['From'] = smtp_from or smtp_user or 'cloud-backup@localhost'
+
             msg['To'] = smtp_to
             
             port = int(smtp_port) if smtp_port else 25

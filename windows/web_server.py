@@ -38,11 +38,13 @@ from .engine import WindowsBackupEngine
 
 log = logging.getLogger(__name__)
 
-DB_PATH = os.environ.get("DB_PATH", r"C:\ProgramData\adc-backup\state.db")
-SESSION_FILE = r"C:\ProgramData\adc-backup\session.json"
-AUTH_FILE = r"C:\ProgramData\adc-backup\auth.json"
-RCLONE_CONF = os.environ.get("RCLONE_CONF", r"C:\ProgramData\adc-backup\rclone.conf")
+DB_PATH = os.environ.get("DB_PATH", r"C:\ProgramData\CloudBackup\state.db")
+SESSION_FILE = r"C:\ProgramData\CloudBackup\session.json"
+
+AUTH_FILE = r"C:\ProgramData\CloudBackup\auth.json"
+RCLONE_CONF = os.environ.get("RCLONE_CONF", r"C:\ProgramData\CloudBackup\rclone.conf")
 RCLONE_BIN = os.environ.get("RCLONE_BIN", r"C:\ProgramFiles\rclone\rclone.exe")
+
 PORT = int(os.environ.get("FLASK_PORT", "8081"))
 
 WEB_STATIC_DIR = Path(__file__).parent / "web_static"

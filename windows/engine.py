@@ -27,11 +27,12 @@ from shared import database as db
 
 log = logging.getLogger(__name__)
 
-DB_PATH = os.environ.get("DB_PATH", r"C:\ProgramData\adc-backup\state.db")
+DB_PATH = os.environ.get("DB_PATH", r"C:\ProgramData\CloudBackup\state.db")
 RCLONE_BIN = os.environ.get("RCLONE_BIN", r"C:\ProgramFiles\rclone\rclone.exe")
-RCLONE_CONF = os.environ.get("RCLONE_CONF", r"C:\ProgramData\adc-backup\rclone.conf")
-LOG_DIR = os.environ.get("LOG_DIR", r"C:\ProgramData\adc-backup\logs")
+RCLONE_CONF = os.environ.get("RCLONE_CONF", r"C:\ProgramData\CloudBackup\rclone.conf")
+LOG_DIR = os.environ.get("LOG_DIR", r"C:\ProgramData\CloudBackup\logs")
 HOST_NAME = os.environ.get("HOST_NAME", "supermicro.local")
+
 
 
 class WindowsBackupEngine:

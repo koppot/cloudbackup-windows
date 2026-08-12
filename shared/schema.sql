@@ -1,4 +1,5 @@
--- ADC Backup System — SQLite Schema
+-- CloudBackup for Windows — SQLite Schema
+
 -- Version: 1.0
 -- Engine: SQLite 3 (WAL mode enabled at runtime)
 -- All timestamps are ISO-8601 UTC strings.

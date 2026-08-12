@@ -1,1 +1,2 @@
-"""Windows interface module for ADC Backup."""
+"""Windows interface module for CloudBackup."""
+

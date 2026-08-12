@@ -6,7 +6,8 @@ import secrets
 def hash_password(password: str) -> str:
     """Hashes a password with a static salt for simplicity, or generates a fresh one in a real app."""
     # Simplified version for single password setup
-    salt = "adc_backup_windows_salt"
+    salt = "cloud_backup_windows_salt"
+
     return hashlib.sha256((password + salt).encode('utf-8')).hexdigest()
 
 def check_password(password: str, auth_json_path: str) -> bool:

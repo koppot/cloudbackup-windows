@@ -1,5 +1,5 @@
 """
-shared/rclone.py — rclone subprocess wrapper for ADC Backup System.
+shared/rclone.py — rclone subprocess wrapper for CloudBackup for Windows.
 
 Responsibilities:
   - Build and execute rclone copy / rclone sync commands as subprocesses.
@@ -317,7 +317,8 @@ class RcloneRunner:
         log_fh = None
         if log_path:
             log_fh = open(log_path, "w", encoding="utf-8")
-            log_fh.write(f"# ADC Backup System — rclone log\n")
+            log_fh.write(f"# CloudBackup for Windows — rclone log\n")
+
             log_fh.write(f"# Command: {' '.join(cmd)}\n")
             log_fh.write(f"# Started: {started_at}\n")
             log_fh.write(f"# {'=' * 60}\n\n")

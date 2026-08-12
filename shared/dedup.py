@@ -1,12 +1,7 @@
 """
-shared/dedup.py — File-Level Deduplication Engine for ADC Backup System.
-
-Scans local source paths, computes streaming SHA-256 content fingerprints + mtime + file size,
-and compares them against the SQLite `catalog_files` ledger for the target remote.
-
-Unchanged files are skipped from transfer, while new/modified files are output to an rclone
-`--files-from` manifest. All encryption, drive rotation, and ground-zero restore mechanics remain intact.
+shared/dedup.py — File-Level Deduplication Engine for CloudBackup for Windows.
 """
+
 
 from __future__ import annotations
 

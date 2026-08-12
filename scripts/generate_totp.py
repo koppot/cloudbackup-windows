@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-scripts/generate_totp.py — Setup TOTP authentication and admin password for ADC Backup System.
+scripts/generate_totp.py — Setup TOTP authentication and admin password for CloudBackup for Windows.
 
 Generates a TOTP secret, prompts for password, hashes it using bcrypt (or SHA-256 fallback),
 and saves credentials to auth.json.
 
 Usage:
-    python3 scripts/generate_totp.py [--auth-file /opt/adc-backup/auth.json]
+    python scripts/generate_totp.py [--auth-file C:\ProgramData\CloudBackup\auth.json]
 """
 
 from __future__ import annotations
@@ -57,10 +57,10 @@ def generate_totp_setup(auth_file: str) -> None:
     # 1. Generate TOTP secret and provisioning URI
     secret = pyotp.random_base32()
     totp = pyotp.TOTP(secret)
-    uri = totp.provisioning_uri(name="admin@adc-backup", issuer_name="ADC Backup System")
+    uri = totp.provisioning_uri(name="admin@cloudbackup", issuer_name="CloudBackup for Windows")
 
     print("\n" + "=" * 60)
-    print("      ADC BACKUP SYSTEM — INITIAL AUTHENTICATION SETUP")
+    print("      CLOUDBACKUP FOR WINDOWS — INITIAL AUTHENTICATION SETUP")
     print("=" * 60)
     print(f"\nTOTP Secret Key: {secret}\n")
     print(f"Provisioning URI:\n{uri}\n")
@@ -114,12 +114,12 @@ def generate_totp_setup(auth_file: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate TOTP & admin password for ADC Backup System"
+        description="Generate TOTP & admin password for CloudBackup for Windows"
     )
     parser.add_argument(
         "--auth-file",
-        default="/opt/adc-backup/auth.json",
-        help="Target path for auth.json (default: /opt/adc-backup/auth.json)",
+        default=r"C:\ProgramData\CloudBackup\auth.json",
+        help=r"Target path for auth.json (default: C:\ProgramData\CloudBackup\auth.json)",
     )
     args = parser.parse_args()
     generate_totp_setup(args.auth_file)
