@@ -44,10 +44,10 @@ Name: "{commonappdata}\{#MyAppName}\temp"; Permissions: system-full admins-full
 Source: "..\dist\CloudBackup\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#MyAppName} Web Dashboard"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--server"
+Name: "{group}\{#MyAppName} Web Dashboard"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--server"; Comment: "Open CloudBackup dashboard (starts server if not running)"
 Name: "{group}\{#MyAppName} Diagnostics Verify"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--verify"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--server"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--server"; Tasks: desktopicon; Comment: "Open CloudBackup dashboard (starts server if not running)"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--server"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent

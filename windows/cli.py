@@ -70,10 +70,22 @@ def main() -> int:
     # Single instance lock for server execution
     lock = SingleInstanceLock()
     if not lock.acquire():
-        print("Another instance of CloudBackup is already running.")
-        return 1
+        # Server already running — just open the browser to the existing instance.
+        import webbrowser
+        webbrowser.open(f"http://{args.host}:{args.port}/")
+        print("Another instance of CloudBackup is already running. Opening browser.")
+        return 0
 
     try:
+        import threading
+        import webbrowser
+
+        def _open_browser():
+            import time
+            time.sleep(1.2)  # Give the server a moment to bind
+            webbrowser.open(f"http://{args.host}:{args.port}/")
+
+        threading.Thread(target=_open_browser, daemon=True).start()
         log.info("Launching CloudBackup Windows Server on http://%s:%d", args.host, args.port)
         run_windows_server(host=args.host, port=args.port)
         return 0
