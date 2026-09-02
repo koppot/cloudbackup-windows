@@ -288,6 +288,9 @@ class WindowsBackupEngine:
         passphrase = crypt_passphrase or secrets.token_urlsafe(32)
 
         try:
+            # Kill any orphaned rclone authorize processes holding port 53682
+            self._kill_stale_rclone_authorize()
+
             env = dict(os.environ)
             env.pop("RCLONE_CONFIG", None)
             env["RCLONE_CONFIG"] = RCLONE_CONF
@@ -336,6 +339,26 @@ class WindowsBackupEngine:
         except Exception as exc:
             log.error("Error launching setup wizard: %s", exc)
             return {"error": redact_secrets(str(exc))}
+
+    @staticmethod
+    def _kill_stale_rclone_authorize():
+        """Kill any orphaned rclone authorize processes holding port 53682."""
+        try:
+            if os.name == "nt":
+                # Find rclone processes and kill them — they are only spawned by us for authorize
+                result = subprocess.run(
+                    ["taskkill", "/F", "/IM", "rclone.exe"],
+                    capture_output=True, text=True, timeout=5,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
+                )
+                if result.returncode == 0:
+                    log.info("Killed stale rclone process(es): %s", result.stdout.strip())
+                    import time
+                    time.sleep(1)  # Allow port to be released
+            else:
+                subprocess.run(["pkill", "-f", "rclone authorize"], capture_output=True, timeout=5)
+        except Exception as exc:
+            log.debug("_kill_stale_rclone_authorize: %s", exc)
 
     def _background_authorize_listener(self, proc: subprocess.Popen, name: str, passphrase: str):
         try:
