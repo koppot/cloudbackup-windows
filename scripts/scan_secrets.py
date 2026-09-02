@@ -17,6 +17,13 @@ import re
 import sys
 from pathlib import Path
 
+# Ensure UTF-8 output encoding across Windows/Linux CI runners
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ROOT_DIR = Path(__file__).parent.parent.resolve()
 
 SECRET_PATTERNS = [
@@ -34,7 +41,7 @@ ALLOWED_SECRET_EXTENSIONS = {".py", ".md", ".iss", ".spec", ".json", ".sql", ".t
 def scan_repository(scan_artifacts: bool = False) -> int:
     label = "REPOSITORY & ARTIFACT PATTERN SCANNER" if scan_artifacts else "REPOSITORY PATTERN SCANNER"
     print("=" * 70)
-    print(f"      CLOUD BACKUP — {label}")
+    print(f"      CLOUD BACKUP -- {label}")
     print("=" * 70)
 
     findings = []
@@ -68,12 +75,12 @@ def scan_repository(scan_artifacts: bool = False) -> int:
                 print(f"[WARN] Failed to read {rel_path}: {exc}")
 
     if findings:
-        print("\n❌ REPOSITORY PATTERN SCAN FAILED — Potential secrets detected:")
+        print("\n[FAIL] REPOSITORY PATTERN SCAN FAILED -- Potential secrets detected:")
         for f in findings:
             print(f"   - {f}")
         return 1
 
-    print("✅ REPOSITORY PATTERN SCAN PASSED: Zero plain-text credentials, tokens, or forbidden files found.")
+    print("[OK] REPOSITORY PATTERN SCAN PASSED: Zero plain-text credentials, tokens, or forbidden files found.")
     return 0
 
 

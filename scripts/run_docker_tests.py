@@ -14,6 +14,13 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Ensure UTF-8 output encoding across Windows/Linux CI runners
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ROOT_DIR = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(ROOT_DIR))
 
@@ -68,7 +75,7 @@ def main() -> int:
     mode_label = "IN-CONTAINER VALIDATION" if is_container else "HOST PREFLIGHT (Host Environment)"
 
     print("=" * 80)
-    print(f"   CLOUD BACKUP FOR WINDOWS — {mode_label}")
+    print(f"   CLOUD BACKUP FOR WINDOWS -- {mode_label}")
     print("   LABEL: SUPPLEMENTARY PLATFORM-NEUTRAL VALIDATION ONLY")
     print("   (NOTE: Does NOT validate Windows installer or Windows security model)")
     print("=" * 80)
@@ -84,13 +91,13 @@ def main() -> int:
         network_isolated = False
         print("[WARN] Outbound network connection succeeded. Container should be executed with --network none.")
     except Exception:
-        print("✅ No outbound connection succeeded during the check; the container was launched with --network none.")
+        print("[OK] No outbound connection succeeded during the check; the container was launched with --network none.")
 
     # 1. Run Repository Pattern Scanner
     print("\n--- STAGE 1: REPOSITORY PATTERN SCANNER ---")
     secret_exit = scan_repository(scan_artifacts=False)
     if secret_exit != 0:
-        print("❌ Repository pattern scanner failed. Halting test suite.")
+        print("[FAIL] Repository pattern scanner failed. Halting test suite.")
         return 1
 
     # 2. Run Platform-Neutral Unit Test Suite
@@ -113,10 +120,10 @@ def main() -> int:
     print("=" * 80)
 
     if not test_res["was_successful"]:
-        print("❌ Platform-neutral test suite FAILED.")
+        print("[FAIL] Platform-neutral test suite FAILED.")
         return 1
 
-    print("✅ Supplementary platform-neutral validation PASSED successfully.")
+    print("[OK] Supplementary platform-neutral validation PASSED successfully.")
     return 0
 
 
