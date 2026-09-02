@@ -23,8 +23,8 @@ OutputBaseFilename=CloudBackup-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64 arm64
+ArchitecturesInstallIn64BitMode=x64 arm64
 PrivilegesRequired=admin
 
 [Languages]
