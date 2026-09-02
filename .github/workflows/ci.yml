@@ -67,7 +67,7 @@ jobs:
           Expand-Archive -Path $zipPath -DestinationPath bin\temp_extract
           Copy-Item -Path "bin\temp_extract\rclone-v1.68.2-windows-amd64\rclone.exe" -Destination "bin\rclone.exe" -Force
           Remove-Item -Recurse -Force bin\temp_extract, bin\rclone.zip
-          
+
           # Verify SHA-256 Hash against shared/rclone_manifest.json
           $manifest = Get-Content shared\rclone_manifest.json | ConvertFrom-Json
           $expectedHash = $manifest.expected_sha256.ToLower()
