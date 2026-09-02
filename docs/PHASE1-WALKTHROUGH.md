@@ -1,52 +1,52 @@
-# Phase 1 Implementation Walkthrough — Windows Portability & Nontechnical Installer
+# Phase 1 Implementation Walkthrough — Windows Portability & Nontechnical Installer (Phase 1 Development Preview)
 
-All implementation tasks for **Phase 1: Windows Portability and Nontechnical Installer** have been completed on branch `feature/windows-portability-installer`.
+All implementation and remediation tasks for **Phase 1: Windows Portability and Nontechnical Installer** have been completed on branch `feature/windows-portability-installer`.
 
 ---
 
-## 1. Summary of Changes
+## 1. Summary of Remediated Changes
 
-### Central Path Management & Security (`shared/paths.py`)
-- Created `shared/paths.py` as the single source of truth for standard Windows directories:
-  - App Binaries: `C:\Program Files\CloudBackup`
-  - Machine Data Root: `C:\ProgramData\CloudBackup` (`config`, `state`, `logs`, `temp`)
-  - Preferences: `%LocalAppData%\CloudBackup`
-- Implemented `get_resource_path()` supporting PyInstaller frozen mode (`sys._MEIPASS`), source mode, and installed mode.
-- Implemented `validate_local_path()` enforcing path normalization, rejection of NUL bytes, Windows reserved device names (`CON`, `PRN`, `AUX`, `NUL`), and prohibited traversal escapes.
-- Implemented `SingleInstanceLock` for single-instance locking in `ProgramData\CloudBackup\state\cloudbackup.lock`.
-
-### Safe Subprocess Execution (`shared/subprocess_utils.py`)
-- Implemented `run_safe_subprocess()` requiring argument lists (`shell=False`), timeout control, and automatic redaction of passphrases, OAuth tokens, and secrets from logs and UI output.
+### Hardcoded Credentials Removal
+- Completely removed all hardcoded crypt passphrases (`SuperMicroBackup2026!Secure`) from `windows/engine.py`.
+- `setup_wizard` and `_register_new_gdrive` now dynamically generate passphrases using `secrets.token_urlsafe(32)` or accept user-configured secrets.
 
 ### Fail-Closed Rclone Trust Policy (`shared/rclone.py` & `shared/rclone_manifest.json`)
-- Created `shared/rclone_manifest.json` pinning `v1.68.2` and SHA-256 hash.
-- Updated `resolve_rclone_binary()` to prefer bundled `rclone.exe` and permit explicit absolute-path external overrides with version range checking. Prohibited bare `PATH` lookups.
+- Missing manifest (`shared/rclone_manifest.json`), malformed manifest, missing bundle executable, or SHA-256 hash mismatch halts rclone execution immediately.
+- Default resolution requires verified bundled binary. External overrides are permitted ONLY via explicit absolute paths (`os.path.isabs`). Prohibited bare `PATH` lookups.
 
-### Engine, Web Server & Entry Point (`windows/cli.py`, `windows/engine.py`, `windows/web_server.py`)
-- Created `windows/cli.py` as the main application entry point (`CloudBackup.exe`).
-- Updated `windows/web_server.py` to bind to `127.0.0.1:8765` by default for local-only onboarding.
-- Refactored `windows/engine.py` to use `shared/paths.py`, `shared/subprocess_utils.py`, and `schtasks.exe` for idempotent Task Scheduler toggling without creating scheduled tasks at install time.
+### Environment & Security Sanitization (`shared/subprocess_utils.py`)
+- Stripped inherited `RCLONE_CONFIG` and `RCLONE_CONF` environment variables in process execution to prevent credential leakage.
+- Enforced argument lists without `shell=True` across all subprocess calls.
+- Enforced loopback-only host binding (`127.0.0.1` / `localhost`) in `windows/cli.py` and `windows/web_server.py`. Non-loopback bind hosts are explicitly rejected.
 
-### Executable Packaging & Installer (`CloudBackup.spec` & `installer/CloudBackupInstaller.iss`)
-- Created `CloudBackup.spec` PyInstaller specification producing standalone `dist/CloudBackup/CloudBackup.exe`.
-- Created Inno Setup script `installer/CloudBackupInstaller.iss` producing `CloudBackup-Setup.exe` with GUI setup, desktop/start menu shortcuts, uninstaller, and least-privilege ACLs.
+### Least-Privilege Directory Permissions (`installer/CloudBackupInstaller.iss`)
+- Replaced broad `authusers-modify` permissions on `ProgramData\CloudBackup` subdirectories with least-privilege `system-full admins-full` access.
 
-### CI/CD Pipeline (`.github/workflows/ci.yml`)
-- Created GitHub Actions workflow running on `windows-latest` for testing, PyInstaller packaging, Inno Setup compilation, and artifact generation.
+### Source Selection Directory Validation (`windows/web_server.py` & `shared/paths.py`)
+- Validated that added source paths exist (`must_exist=True`), are directories (`is_dir()`), and are accessible before adding to job sources.
 
-### Documentation & Test Suite
-- Created `INSTALL-WINDOWS.md`, `USER-GUIDE.md`, `ADMIN-GUIDE.md`, `BUILD-WINDOWS.md`, `RELEASE-PROCESS.md`, `RELEASE_NOTES.md`, and `docs/WINDOWS-MANUAL-QA.md`.
-- Created unit tests in `tests/test_paths.py`, `tests/test_rclone_discovery.py`, `tests/test_subprocess_safety.py`, and `tests/test_resource_resolution.py`.
+### Task Scheduler Management (`windows/engine.py`)
+- Scheduled tasks are NOT registered during installer setup. Added safe, idempotent `schtasks.exe` creation, enablement, and disablement helpers (`create_scheduled_task`, `enable_scheduler`, `disable_scheduler`).
+
+### CI/CD Pipeline & Pinned Rclone Staging (`.github/workflows/ci.yml`)
+- Added workflow concurrency (`cancel-in-progress: true`) to prevent redundant CI builds.
+- Split jobs into `test-windows` (unit test matrix across Python 3.10, 3.11, 3.12), `package-installer-windows` (executable build & Inno Setup compilation), and `unit-tests-linux`.
+- Added CI staging step on `windows-latest` to download pinned rclone x64 (`v1.68.2`), verify SHA-256 hash against `shared/rclone_manifest.json`, and fail closed before PyInstaller packaging.
+- Added draft release automation step (`softprops/action-gh-release@v2`) for version tags (`v*`).
+
+### Integration & Unit Test Suite (`tests/test_frozen_integration.py` & others)
+- Created `tests/test_frozen_integration.py` verifying resource discovery, schema loading, static asset presence, single-instance locking, and loopback web server security rejection.
+- All 85 unit tests pass cleanly.
 
 ---
 
-## 2. Verification & Automated Test Results
+## 2. Verification & Test Results
 
-### Unit Test Suite
-Ran `python -m unittest discover tests`:
+### Unit & Integration Test Suite
+Ran `.venv/bin/python -m unittest discover tests`:
 ```text
-Ran 81 tests in 0.134s
-OK (81 passed, 0 failures)
+Ran 85 tests in 0.139s
+OK (85 passed, 0 failures)
 ```
 
 ### PyInstaller Standalone Executable Test
@@ -57,7 +57,7 @@ Build complete! The results are available in: dist/CloudBackup
 ```
 Ran `dist/CloudBackup/CloudBackup --version`:
 ```text
-CloudBackup for Windows v1.0.0 (x64)
+CloudBackup for Windows v1.0.0-phase1 (x64 Phase 1 Development Preview)
 ```
 
 ---
@@ -66,4 +66,5 @@ CloudBackup for Windows v1.0.0 (x64)
 
 - **Branch**: `feature/windows-portability-installer`
 - **Target Branch**: `main`
-- **Summary**: Complete Phase 1 Windows Portability, PyInstaller standalone distribution, Inno Setup installer script, fail-closed rclone trust policy, safe subprocess API, GitHub Actions CI workflow, and Windows-first documentation.
+- **PR Link**: [https://github.com/koppot/cloudbackup-windows/pull/1](https://github.com/koppot/cloudbackup-windows/pull/1)
+- **Summary**: Phase 1 Development Preview — Windows Portability, PyInstaller standalone distribution, Inno Setup installer script, fail-closed rclone trust policy, safe subprocess API, GitHub Actions CI workflow, and Windows-first documentation.

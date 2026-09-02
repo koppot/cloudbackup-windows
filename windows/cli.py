@@ -31,6 +31,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("cloudbackup")
 
+ALLOWED_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -46,8 +48,13 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.version:
-        print("CloudBackup for Windows v1.0.0 (x64)")
+        print("CloudBackup for Windows v1.0.0-phase1 (x64 Phase 1 Development Preview)")
         return 0
+
+    # Enforce loopback-only bind address in Phase 1
+    if args.host not in ALLOWED_LOOPBACK_HOSTS:
+        print(f"Error: Invalid bind address '{args.host}'. Phase 1 is restricted to loopback (127.0.0.1) for security.", file=sys.stderr)
+        return 1
 
     ensure_app_directories()
     db_path = str(get_default_db_path())

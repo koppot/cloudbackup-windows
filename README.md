@@ -3,7 +3,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgray.svg)
 ![Installer](https://img.shields.io/badge/installer-CloudBackup--Setup.exe-success.svg)
-![Status](https://img.shields.io/badge/status-Phase%201%20Production%20Hardened-brightgreen.svg)
+![Status](https://img.shields.io/badge/status-Phase%201%20Development%20Preview-yellow.svg)
 
 **CloudBackup for Windows** is a standalone, zero-knowledge encrypted backup solution designed specifically for Windows hosts. It provides nontechnical-user-friendly installation via `CloudBackup-Setup.exe`, automated cloud protection across Google Drive remotes, deduplication, and an intuitive local web dashboard.
 

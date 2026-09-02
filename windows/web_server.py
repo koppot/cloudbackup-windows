@@ -41,7 +41,11 @@ AUTH_FILE = str(get_config_dir() / "auth.json")
 RCLONE_CONF = str(get_default_rclone_conf_path())
 
 PORT = int(os.environ.get("FLASK_PORT", os.environ.get("PORT", "8765")))
-HOST = os.environ.get("HOST", "127.0.0.1")
+
+# Enforce loopback-only host binding for Phase 1 security
+ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
+env_host = os.environ.get("HOST", "127.0.0.1")
+HOST = env_host if env_host in ALLOWED_HOSTS else "127.0.0.1"
 
 INDEX_HTML_PATH = get_resource_path("windows/web_static/index.html")
 ENGINE = WindowsBackupEngine(db_path=DB_PATH)
@@ -221,8 +225,12 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             category = body.get("category", "storage_media").strip()
             if name and raw_path:
                 try:
-                    # Validate path using shared/paths.py
-                    valid_path = str(validate_local_path(raw_path, must_exist=False))
+                    # Validate path: must exist, be a directory, and be accessible
+                    valid_path_obj = validate_local_path(raw_path, must_exist=True)
+                    if not valid_path_obj.is_dir():
+                        return self.respond_json({"error": f"Source path '{raw_path}' is a file, not a directory."}, 400)
+
+                    valid_path = str(valid_path_obj)
                     db.add_source({
                         "host": "supermicro.local",
                         "name": name,
@@ -231,8 +239,8 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         "enabled": 1,
                     }, DB_PATH)
                     return self.respond_json({"ok": True, "path": valid_path})
-                except ValueError as ve:
-                    return self.respond_json({"error": f"Invalid source path: {ve}"}, 400)
+                except Exception as ve:
+                    return self.respond_json({"error": f"Invalid source directory: {ve}"}, 400)
             return self.respond_json({"error": "Missing name or path"}, 400)
 
         elif self.path == "/api/sources/remove":
@@ -245,6 +253,8 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def run_windows_server(host: str = HOST, port: int = PORT) -> None:
+    if host not in ALLOWED_HOSTS:
+        raise ValueError(f"Security error: Invalid bind host '{host}'. Phase 1 server is restricted to loopback (127.0.0.1).")
     db.init_db(DB_PATH)
     server_address = (host, port)
     httpd = http.server.HTTPServer(server_address, BackupHTTPRequestHandler)

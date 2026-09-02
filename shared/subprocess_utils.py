@@ -115,6 +115,12 @@ def run_safe_subprocess(
     if os.name == "nt":
         creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
+    # Sanitize environment: remove inherited rclone config overrides unless explicitly provided
+    proc_env = dict(env) if env is not None else dict(os.environ)
+    if env is None:
+        proc_env.pop("RCLONE_CONFIG", None)
+        proc_env.pop("RCLONE_CONF", None)
+
     try:
         proc = subprocess.run(
             cmd,
@@ -122,7 +128,7 @@ def run_safe_subprocess(
             text=text,
             timeout=timeout,
             cwd=cwd,
-            env=env,
+            env=proc_env,
             creationflags=creation_flags,
         )
         return SafeSubprocessResult(

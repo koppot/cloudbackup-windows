@@ -1,7 +1,7 @@
-; CloudBackupInstaller.iss — Inno Setup Script for CloudBackup for Windows (x64)
+; CloudBackupInstaller.iss — Inno Setup Script for CloudBackup for Windows (x64 Phase 1 Development Preview)
 
 #define MyAppName "CloudBackup"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.0-phase1"
 #define MyAppPublisher "Koppot Open Source"
 #define MyAppURL "https://github.com/koppot/cloudbackup-windows"
 #define MyAppExeName "CloudBackup.exe"
@@ -34,11 +34,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Dirs]
-Name: "{commonappdata}\{#MyAppName}"; Permissions: users-readexec
-Name: "{commonappdata}\{#MyAppName}\config"; Permissions: authusers-modify
-Name: "{commonappdata}\{#MyAppName}\state"; Permissions: authusers-modify
-Name: "{commonappdata}\{#MyAppName}\logs"; Permissions: authusers-modify
-Name: "{commonappdata}\{#MyAppName}\temp"; Permissions: authusers-modify
+Name: "{commonappdata}\{#MyAppName}"; Permissions: system-full admins-full users-readexec
+Name: "{commonappdata}\{#MyAppName}\config"; Permissions: system-full admins-full
+Name: "{commonappdata}\{#MyAppName}\state"; Permissions: system-full admins-full
+Name: "{commonappdata}\{#MyAppName}\logs"; Permissions: system-full admins-full users-readexec
+Name: "{commonappdata}\{#MyAppName}\temp"; Permissions: system-full admins-full
 
 [Files]
 Source: "..\dist\CloudBackup\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

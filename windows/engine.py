@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import subprocess
 import sys
 import threading
@@ -24,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared import database as db
 from shared.paths import (
+    get_config_dir,
     get_default_db_path,
     get_default_rclone_conf_path,
     get_log_dir,
@@ -180,7 +182,7 @@ class WindowsBackupEngine:
         return run_id
 
     def _run_packages_pre_hook(self) -> Optional[str]:
-        """Runs PowerShell Get-Package export via array-based subprocess."""
+        """Runs PowerShell Get-Package export via safe array-based subprocess."""
         manifest_dir = Path(LOG_DIR).parent / "packages"
         manifest_dir.mkdir(parents=True, exist_ok=True)
         manifest_path = manifest_dir / "windows-packages.csv"
@@ -201,6 +203,31 @@ class WindowsBackupEngine:
     def resume(self) -> None:
         db.set_system_state("ACTIVE", db_path=self.db_path)
         self.enable_scheduler()
+
+    def create_scheduled_task(self, schedule_time: str = "02:00") -> bool:
+        """
+        Register a Windows Task Scheduler task idempotently using schtasks.exe.
+        Triggered only after user onboarding, cloud validation, and explicit enablement.
+        """
+        try:
+            exe_path = sys.executable if getattr(sys, 'frozen', False) else f"{sys.executable} {Path(__file__).parent / 'cli.py'}"
+            cmd = [
+                "schtasks.exe", "/Create", "/F",
+                "/TN", "CloudBackup-Run",
+                "/TR", f'"{exe_path}" --server',
+                "/SC", "DAILY",
+                "/ST", schedule_time,
+                "/RL", "LIMITED",
+            ]
+            res = run_safe_subprocess(cmd, timeout=15)
+            if res.success:
+                log.info("Successfully registered Windows Task Scheduler task 'CloudBackup-Run' for %s", schedule_time)
+                return True
+            log.warning("Task Scheduler creation returned code %d: %s", res.exit_code, res.stderr)
+            return False
+        except Exception as exc:
+            log.error("Failed to create Windows Task Scheduler task: %s", exc)
+            return False
 
     def enable_scheduler(self) -> bool:
         """Idempotently enable the Windows Task Scheduler task using schtasks.exe."""
@@ -251,19 +278,27 @@ class WindowsBackupEngine:
         res = run_safe_subprocess(cmd, timeout=60)
         return {"ok": res.success, "output": (res.stdout + res.stderr)[-1000:]}
 
-    def setup_wizard(self) -> dict:
+    def setup_wizard(self, crypt_passphrase: Optional[str] = None) -> dict:
         remotes = db.get_remotes(db_path=self.db_path)
         next_idx = len(remotes) + 1
         name = f"gdrive{next_idx}"
         rclone_bin = self._get_rclone_bin()
 
+        # Securely generate passphrase if not provided
+        passphrase = crypt_passphrase or secrets.token_urlsafe(32)
+
         try:
+            env = dict(os.environ)
+            env.pop("RCLONE_CONFIG", None)
+            env["RCLONE_CONFIG"] = RCLONE_CONF
+
             creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
             proc = subprocess.Popen(
                 [rclone_bin, "authorize", "drive", "--config", RCLONE_CONF],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                env=env,
                 creationflags=creation_flags,
             )
             auth_url = None
@@ -281,7 +316,7 @@ class WindowsBackupEngine:
 
             t = threading.Thread(
                 target=self._background_authorize_listener,
-                args=(proc, name),
+                args=(proc, name, passphrase),
                 daemon=True,
             )
             t.start()
@@ -295,23 +330,24 @@ class WindowsBackupEngine:
             log.error("Error launching setup wizard: %s", exc)
             return {"error": redact_secrets(str(exc))}
 
-    def _background_authorize_listener(self, proc: subprocess.Popen, name: str):
+    def _background_authorize_listener(self, proc: subprocess.Popen, name: str, passphrase: str):
         try:
             out, _ = proc.communicate(timeout=180)
             match = re.search(r'(\{.*"access_token".*\})', out, re.DOTALL)
             if match:
                 token_data = json.loads(match.group(1))
-                self._register_new_gdrive(name, token_data)
+                self._register_new_gdrive(name, token_data, passphrase)
         except Exception as exc:
             log.error("Background wizard authorization error: %s", exc)
 
-    def _register_new_gdrive(self, name: str, token_data: dict):
+    def _register_new_gdrive(self, name: str, token_data: dict, passphrase: str):
         base_remote = f"{name}:"
         crypt_remote = f"{name}_crypt:"
         secrets_crypt_remote = f"{name}_secrets_crypt:"
 
         conf_path = Path(RCLONE_CONF)
         conf_path.parent.mkdir(parents=True, exist_ok=True)
+
         stanzas = f"""
 [{name}]
 type = drive
@@ -322,14 +358,14 @@ type = crypt
 remote = {name}:cloud-backup-data
 filename_encryption = standard
 directory_name_encryption = true
-password = SuperMicroBackup2026!Secure
+password = {passphrase}
 
 [{name}_secrets_crypt]
 type = crypt
 remote = {name}:cloud-backup-secrets
 filename_encryption = standard
 directory_name_encryption = true
-password = SuperMicroBackup2026!Secure
+password = {passphrase}
 """
         with open(conf_path, "a", encoding="utf-8") as f:
             f.write(stanzas)
@@ -345,7 +381,7 @@ password = SuperMicroBackup2026!Secure
             "authorized_at": datetime.now(timezone.utc).isoformat(),
             "status": "ok",
         }, db_path=self.db_path)
-        log.info("Registered new Google Drive remote %s (ID %d)", name, rid)
+        log.info("Registered new Google Drive remote %s (ID %d) with dynamic passphrase.", name, rid)
 
     def reauthorize_remote(self, rid: int) -> dict:
         remote = db.get_remote(rid, db_path=self.db_path)
@@ -353,12 +389,17 @@ password = SuperMicroBackup2026!Secure
             return {"error": "Remote not found"}
         rclone_bin = self._get_rclone_bin()
         try:
+            env = dict(os.environ)
+            env.pop("RCLONE_CONFIG", None)
+            env["RCLONE_CONFIG"] = RCLONE_CONF
+
             creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
             proc = subprocess.Popen(
                 [rclone_bin, "authorize", "drive", "--config", RCLONE_CONF],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                env=env,
                 creationflags=creation_flags,
             )
             auth_url = None

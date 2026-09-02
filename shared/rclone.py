@@ -1,13 +1,12 @@
 """
-shared/rclone.py — rclone subprocess wrapper with strict discovery policy & subprocess safety.
+shared/rclone.py — rclone subprocess wrapper with strict fail-closed discovery & environment sanitization.
 
 Responsibilities:
-  - Build and execute rclone copy / rclone sync commands as subprocesses via argument lists.
-  - Fail-closed rclone discovery: prefer bundled rclone.exe with SHA-256 manifest validation; allow absolute-path external override; NEVER fallback to PATH lookup.
-  - Write immutable per-run log files.
-  - Redact secrets, passphrases, tokens in logs and output.
-  - Detect rotation trigger conditions (exit code 5, capacity below threshold).
-  - Check drive capacity via `rclone about`.
+  - Fail-closed rclone discovery: require verified bundled rclone.exe with SHA-256 hash verification against shared/rclone_manifest.json. Missing manifest, missing bundle, or hash mismatch halts execution immediately.
+  - External override allowed ONLY via explicit absolute path.
+  - Prohibit bare 'rclone' or implicit PATH lookups.
+  - Sanitize process environment: clear inherited RCLONE_CONFIG/RCLONE_CONF variables.
+  - Execute rclone copy / sync using argument lists without shell=True.
 """
 
 from __future__ import annotations
@@ -90,7 +89,7 @@ class CapacityInfo:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# rclone Discovery Policy
+# Fail-Closed rclone Discovery Policy
 # ─────────────────────────────────────────────────────────────────────────────
 
 def resolve_rclone_binary(configured_path: Optional[str] = None) -> Tuple[Path, str]:
@@ -98,17 +97,18 @@ def resolve_rclone_binary(configured_path: Optional[str] = None) -> Tuple[Path, 
     Resolve and validate the rclone executable strictly according to trust policy.
 
     Discovery Policy:
-    1. If configured_path is specified:
-       - Must be an absolute path. Reject bare 'rclone' or relative paths with ValueError.
-       - Verify existence and run `rclone version` check.
-    2. Check for bundled rclone binary inside PyInstaller app bundle or repository (e.g. bin/rclone.exe).
-       Verify SHA-256 hash against shared/rclone_manifest.json if available.
-    3. NEVER fallback to arbitrary `shutil.which("rclone")` or bare PATH lookup.
+    1. If configured_path is passed and non-empty:
+       - Must be an absolute path (os.path.isabs). Otherwise, raise ValueError.
+       - Verify existence and execute `rclone version` check.
+    2. Default / Empty configured_path:
+       - Require bundled rclone binary inside PyInstaller app bundle or repository.
+       - Load shared/rclone_manifest.json. Missing or malformed manifest raises ValueError/FileNotFoundError.
+       - Check bundled executable existence. Missing binary raises FileNotFoundError.
+       - Verify SHA-256 hash against manifest expected_sha256. Mismatch fails closed immediately (raises ValueError).
+    3. NEVER fallback to arbitrary PATH lookup or shutil.which("rclone").
 
     Returns:
         (resolved_path, discovery_mode_label)
-    Raises:
-        FileNotFoundError / ValueError if no valid rclone binary is found.
     """
     # 1. Check explicit external override path if configured
     if configured_path is not None:
@@ -131,39 +131,51 @@ def resolve_rclone_binary(configured_path: Optional[str] = None) -> Tuple[Path, 
             log.warning("Using administrator-configured external rclone override at %s", cand_path)
             return cand_path, "external_override"
 
-    # Load manifest if available
+    # 2. Bundled binary resolution & fail-closed hash validation
     manifest_path = get_resource_path("shared/rclone_manifest.json")
-    manifest = {}
-    if manifest_path.exists():
-        try:
-            with open(manifest_path, "r", encoding="utf-8") as mf:
-                manifest = json.load(mf)
-        except Exception:
-            pass
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Fail-closed error: rclone manifest missing at {manifest_path}. Execution halted."
+        )
 
-    # 2. Check bundled binary path
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as mf:
+            manifest = json.load(mf)
+    except Exception as exc:
+        raise ValueError(f"Fail-closed error: Malformed rclone manifest at {manifest_path}: {exc}") from exc
+
     bundled_rel = manifest.get("bundled_binary_relative_path", "bin/rclone.exe")
     bundled_candidates = [
         get_resource_path(bundled_rel),
         get_resource_path("rclone.exe"),
+        get_resource_path("bin/rclone"),
     ]
 
+    resolved_cand: Optional[Path] = None
     for cand in bundled_candidates:
         if cand.exists() and cand.is_file():
-            expected_hash = manifest.get("expected_sha256")
-            if expected_hash:
-                hasher = hashlib.sha256()
-                with open(cand, "rb") as f:
-                    while chunk := f.read(65536):
-                        hasher.update(chunk)
-                computed_hash = hasher.hexdigest()
-                if computed_hash != expected_hash:
-                    log.warning("Bundled rclone binary hash mismatch! Computed %s vs Expected %s", computed_hash, expected_hash)
-            return cand, "bundled"
+            resolved_cand = cand
+            break
 
-    raise FileNotFoundError(
-        "No verified rclone binary available. Bundled rclone.exe missing and no valid absolute external path configured."
-    )
+    if not resolved_cand:
+        raise FileNotFoundError(
+            f"Fail-closed error: Bundled rclone executable missing ({bundled_rel}). Execution halted."
+        )
+
+    expected_hash = manifest.get("expected_sha256")
+    if expected_hash:
+        hasher = hashlib.sha256()
+        with open(resolved_cand, "rb") as f:
+            while chunk := f.read(65536):
+                hasher.update(chunk)
+        computed_hash = hasher.hexdigest()
+        if computed_hash.lower() != expected_hash.lower():
+            raise ValueError(
+                f"Fail-closed security check failed: Bundled rclone executable SHA-256 hash mismatch! "
+                f"Computed '{computed_hash}' vs Expected '{expected_hash}'. Execution halted."
+            )
+
+    return resolved_cand, "bundled"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -308,6 +320,7 @@ class RcloneRunner:
 
         env = dict(os.environ)
         env.pop("RCLONE_CONFIG", None)
+        env.pop("RCLONE_CONF", None)
         env["RCLONE_CONFIG"] = self._rclone_conf
 
         try:
