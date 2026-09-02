@@ -3,7 +3,7 @@
 # Note: Image build installs hash-pinned dependencies from PyPI; container runtime execution uses --network none.
 # (Does NOT validate Windows installer compilation, UAC elevation, ProgramData ACLs, or Windows runtime security)
 
-FROM python:3.11-slim@sha256:4d60c497e411b0e008d5fcfc4fdf4c7fbdbbcda3733b1e389d469efb507204f6
+FROM python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534
 
 # Create non-root unprivileged test user
 RUN groupadd -g 10001 testgroup && \
