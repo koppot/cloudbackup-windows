@@ -82,6 +82,30 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
+        # Serve static assets (images etc.) from web_static/ without requiring auth
+        if path.startswith("/static/"):
+            filename = path[len("/static/"):]
+            if filename and "/" not in filename and "\\" not in filename:
+                static_path = get_resource_path("windows/web_static") / filename
+                if static_path.exists():
+                    ext = static_path.suffix.lower()
+                    mime = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                            ".png": "image/png", ".gif": "image/gif",
+                            ".svg": "image/svg+xml", ".ico": "image/x-icon",
+                            ".css": "text/css", ".js": "application/javascript"
+                            }.get(ext, "application/octet-stream")
+                    data = static_path.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", mime)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Cache-Control", "public, max-age=86400")
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+            self.send_response(404)
+            self.end_headers()
+            return
+
         if path == "/login":
             # First-run: no password configured — auto-issue a session and redirect.
             if auth.is_first_run(AUTH_FILE):
