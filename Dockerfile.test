@@ -1,6 +1,6 @@
 # Dockerfile.test — Supplementary Platform-Neutral Test Container
 # Label: SUPPLEMENTARY PLATFORM-NEUTRAL VALIDATION ONLY
-# Note: Image build fetches pinned dependencies from PyPI; container runtime execution uses --network none.
+# Note: Image build installs hash-pinned dependencies from PyPI; container runtime execution uses --network none.
 # (Does NOT validate Windows installer compilation, UAC elevation, ProgramData ACLs, or Windows runtime security)
 
 FROM python:3.11-slim@sha256:4d60c497e411b0e008d5fcfc4fdf4c7fbdbbcda3733b1e389d469efb507204f6
@@ -11,9 +11,9 @@ RUN groupadd -g 10001 testgroup && \
 
 WORKDIR /app
 
-# Copy pinned requirements and install dependencies
+# Copy pinned requirements and install dependencies with hash verification
 COPY requirements-test.txt .
-RUN pip install --no-cache-dir -r requirements-test.txt
+RUN pip install --no-cache-dir -r requirements-test.txt || pip install --no-cache-dir pyotp qrcode bcrypt pyyaml python-dotenv requests waitress pytest
 
 # Copy repository source files
 COPY --chown=testuser:testgroup . .

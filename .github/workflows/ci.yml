@@ -57,6 +57,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller pytest
 
+      - name: Scan Source Tree for Secret Patterns
+        run: |
+          python scripts/scan_secrets.py
+
       - name: Stage & Hash-Verify Pinned rclone Windows x64
         shell: powershell
         run: |
@@ -97,6 +101,10 @@ jobs:
       - name: Compile Inno Setup Installer
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer/CloudBackupInstaller.iss
+
+      - name: Scan Built Artifacts for Secret Patterns
+        run: |
+          python scripts/scan_secrets.py --scan-artifacts
 
       - name: Generate SHA-256 Checksum Manifest
         shell: powershell

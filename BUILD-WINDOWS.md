@@ -43,7 +43,7 @@ This generates `dist/CloudBackup-Setup.exe`.
 ## Supplementary Platform-Neutral Docker Testing
 
 > [!NOTE]
-> **LABEL: SUPPLEMENTARY PLATFORM-NEUTRAL VALIDATION ONLY**  
+> **LABEL: SUPPLEMENTARY PLATFORM-NEUTRAL VALIDATION ONLY**
 > Docker validation runs hermetic platform-neutral tests and repository pattern scanning on Linux. Image construction fetches pinned dependencies from PyPI (`requirements-test.txt`), while container **runtime execution** is strictly network-isolated with `--network none`.
 > Docker does **NOT** validate Windows installer compilation, UAC elevation, `ProgramData` ACLs, Task Scheduler, or Windows security controls.
 
