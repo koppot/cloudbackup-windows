@@ -95,8 +95,9 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         db.init_db(DB_PATH)
 
         if path in ("/", "/index.html", "/drives", "/sources", "/runs"):
-            if INDEX_HTML_PATH.exists():
-                with open(INDEX_HTML_PATH, "r", encoding="utf-8") as f:
+            index_path = get_resource_path("windows/web_static/index.html")
+            if index_path.exists():
+                with open(index_path, "r", encoding="utf-8") as f:
                     return self.respond_html(f.read())
             return self.respond_html("<h2>index.html missing</h2>", 500)
 

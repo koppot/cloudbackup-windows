@@ -57,13 +57,15 @@ def get_resource_path(relative_path: str) -> Path:
     Works in source mode, PyInstaller frozen mode (sys._MEIPASS), and installed mode.
     """
     clean_rel = str(relative_path).lstrip("/\\")
-    if is_frozen():
+    if is_frozen() and hasattr(sys, "_MEIPASS"):
         meipass = Path(getattr(sys, "_MEIPASS")).resolve()
         candidate = meipass / clean_rel
         if candidate.exists():
             return candidate
-    # Fallback to app directory / repo root
     app_dir = get_app_dir()
+    for candidate in [app_dir / clean_rel, app_dir / "_internal" / clean_rel]:
+        if candidate.exists():
+            return candidate.resolve()
     return (app_dir / clean_rel).resolve()
 
 
