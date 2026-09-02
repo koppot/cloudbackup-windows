@@ -32,13 +32,17 @@ state.json.bak
 logs/
 
 # ────────────────────────────
-# Backup Catalog Directories
+# Backup Catalog & Test Output Directories
 # ────────────────────────────
 catalog_backups/
 restore_test/
+test-output/
+acceptance-output/
+tools/acceptance/output/
+C:\CloudBackup-Acceptance-Test\
 
 # ────────────────────────────
-# Python
+# Python & Packaging
 # ────────────────────────────
 __pycache__/
 *.pyc
@@ -58,6 +62,8 @@ env/
 ENV/
 env.bak/
 venv.bak/
+*.msi
+*.zip
 
 # ────────────────────────────
 # Python Test Artifacts
