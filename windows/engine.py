@@ -303,8 +303,14 @@ class WindowsBackupEngine:
             )
             auth_url = None
             start = datetime.now(timezone.utc).timestamp()
-            while datetime.now(timezone.utc).timestamp() - start < 6:
-                line = proc.stdout.readline() if proc.stdout else ""
+            while datetime.now(timezone.utc).timestamp() - start < 30:
+                if proc.stdout is None:
+                    break
+                line = proc.stdout.readline()
+                if not line:
+                    # Process ended before printing the URL
+                    break
+                log.debug("rclone authorize output: %s", line.rstrip())
                 if "http://127.0.0.1:53682/" in line or "accounts.google.com" in line:
                     match = re.search(r'(https?://[^\s]+)', line)
                     if match:
@@ -312,7 +318,8 @@ class WindowsBackupEngine:
                         break
 
             if not auth_url:
-                auth_url = "http://127.0.0.1:53682/auth"
+                log.error("rclone authorize did not produce an auth URL within 30 seconds")
+                return {"error": "Could not start Google authorisation — rclone did not return an OAuth URL. Please try again."}
 
             t = threading.Thread(
                 target=self._background_authorize_listener,
