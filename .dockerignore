@@ -26,3 +26,4 @@ rclone.conf
 *.tmp
 tmp/
 temp/
+test-output/

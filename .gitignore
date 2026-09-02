@@ -5,7 +5,7 @@
 # ────────────────────────────
 # Secret and Private Config
 # ────────────────────────────
-config.yaml              # Your personal configuration — NEVER commit this
+config.yaml              # Personal configuration — NEVER commit
 *.key                    # Encryption keys
 *.pem                    # TLS/SSL certificates
 *.env                    # Environment variable files
@@ -20,7 +20,7 @@ rclone.conf              # Contains OAuth tokens and remote configs
 # ────────────────────────────
 # Database and State Files
 # ────────────────────────────
-*.db                     # SQLite databases (may contain file path metadata)
+*.db                     # SQLite databases
 *.db-journal
 state.json               # Runtime state file
 state.json.bak
@@ -32,13 +32,14 @@ state.json.bak
 logs/
 
 # ────────────────────────────
-# Backup Catalog Directories
+# Backup Catalog & Test Output Directories
 # ────────────────────────────
 catalog_backups/
 restore_test/
+test-output/
 
 # ────────────────────────────
-# Python
+# Python & Packaging
 # ────────────────────────────
 __pycache__/
 *.pyc
@@ -58,6 +59,8 @@ env/
 ENV/
 env.bak/
 venv.bak/
+*.msi
+*.zip
 
 # ────────────────────────────
 # Python Test Artifacts
