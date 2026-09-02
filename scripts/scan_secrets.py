@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-scripts/scan_secrets.py — Repository and Artifact Secret Scanner
+scripts/scan_secrets.py — Repository and Build Artifact Secret Pattern Scanner
 
-Scans repository files for accidental secret leakage:
+Scans repository files and build artifacts for accidental secret leakage:
   - rclone.conf files
   - .env files
   - OAuth access/refresh tokens (e.g. ya29.)
@@ -11,6 +11,7 @@ Scans repository files for accidental secret leakage:
   - Sensitive environment configurations
 """
 
+import argparse
 import os
 import re
 import sys
@@ -26,19 +27,23 @@ SECRET_PATTERNS = [
     (re.compile(r"password\s*=\s*['\"][^'\"]{8,}['\"]"), "Hardcoded Password Assignment"),
 ]
 
-IGNORED_DIRS = {".git", ".venv", "venv", "__pycache__", "build", "dist", ".pytest_cache"}
-ALLOWED_SECRET_EXTENSIONS = {".py", ".md", ".iss", ".spec", ".json", ".sql", ".txt", ".yml", ".yaml"}
+IGNORED_DIRS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache"}
+ALLOWED_SECRET_EXTENSIONS = {".py", ".md", ".iss", ".spec", ".json", ".sql", ".txt", ".yml", ".yaml", ".sha256"}
 
 
-def scan_repository() -> int:
+def scan_repository(scan_artifacts: bool = False) -> int:
+    label = "REPOSITORY & ARTIFACT PATTERN SCANNER" if scan_artifacts else "REPOSITORY PATTERN SCANNER"
     print("=" * 70)
-    print("      CLOUD BACKUP — REPOSITORY SECRET SCANNER")
+    print(f"      CLOUD BACKUP — {label}")
     print("=" * 70)
 
     findings = []
+    ignored = set(IGNORED_DIRS)
+    if not scan_artifacts:
+        ignored.update({"build", "dist"})
 
     for root, dirs, files in os.walk(ROOT_DIR):
-        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+        dirs[:] = [d for d in dirs if d not in ignored]
 
         for file in files:
             file_path = Path(root) / file
@@ -63,14 +68,21 @@ def scan_repository() -> int:
                 print(f"[WARN] Failed to read {rel_path}: {exc}")
 
     if findings:
-        print("\n❌ SECRET SCAN FAILED — Potential secrets detected:")
+        print("\n❌ REPOSITORY PATTERN SCAN FAILED — Potential secrets detected:")
         for f in findings:
             print(f"   - {f}")
         return 1
 
-    print("✅ SECRET SCAN PASSED: Zero plain-text credentials, tokens, or forbidden files found.")
+    print("✅ REPOSITORY PATTERN SCAN PASSED: Zero plain-text credentials, tokens, or forbidden files found.")
     return 0
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser(description="CloudBackup Secret Pattern Scanner")
+    parser.add_argument("--scan-artifacts", action="store_true", help="Include dist/ and build/ directories in secret scan")
+    args = parser.parse_args()
+    return scan_repository(scan_artifacts=args.scan_artifacts)
+
+
 if __name__ == "__main__":
-    sys.exit(scan_repository())
+    sys.exit(main())
