@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > **Status**: **Phase 1 Development Preview**
-> PR #1 is open, unmerged, and clean-mergeable. Automated CI builds on `windows-latest` have passed 100%. Before merging or distributing to users, complete the 15-step manual clean-Windows-VM acceptance checklist below using disposable test cloud destinations.
+> PR #1 is open, unmerged, and clean-mergeable. Automated CI builds on `windows-latest` have passed 100%. Before publishing a stable release or using CloudBackup to protect production data, complete the 15-step manual clean-Windows-VM acceptance checklist using a disposable cloud destination.
 
 ---
 
