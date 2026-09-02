@@ -40,23 +40,23 @@ This pull request establishes Phase 1 Windows portability, standalone executable
    - Installer does NOT register scheduled tasks at setup. Added safe `schtasks.exe` creation, enablement, and disablement helpers (`create_scheduled_task`, `enable_scheduler`, `disable_scheduler`) triggered after onboarding.
 
 9. **CI Workflow Pipeline & Concurrency**:
-   - Workflow `.github/workflows/ci.yml` includes concurrency control (`cancel-in-progress: true`) and separated jobs (`test-windows`, `package-installer-windows`, `unit-tests-linux`).
+   - Workflow `.github/workflows/ci.yml` includes concurrency control (`cancel-in-progress: true`), source pattern scanning, artifact pattern scanning, and separated jobs (`test-windows`, `package-installer-windows`, `unit-tests-linux`).
 
 ---
 
 ## 2. Verified GitHub Actions CI Results
 
-- **Workflow Run**: `33620733985` / `33620738586`
-- **Workflow Link**: [https://github.com/koppot/cloudbackup-windows/actions/runs/33620733985](https://github.com/koppot/cloudbackup-windows/actions/runs/33620733985)
+- **Workflow Run**: `33622756010` / `33622761386`
+- **Workflow Link**: [https://github.com/koppot/cloudbackup-windows/actions/runs/33622756010](https://github.com/koppot/cloudbackup-windows/actions/runs/33622756010)
 - **Overall Status**: **PASSED (100% Success across all 5 jobs)**
 
 | Job Name | Runner | Status | Duration |
 |---|---|---|---:|
-| `Unit Tests on Windows (Python 3.10)` | `windows-latest` | ✓ PASSED | 29s |
-| `Unit Tests on Windows (Python 3.11)` | `windows-latest` | ✓ PASSED | 31s |
-| `Unit Tests on Windows (Python 3.12)` | `windows-latest` | ✓ PASSED | 30s |
-| `Platform-Neutral Unit Tests` | `ubuntu-latest` | ✓ PASSED | 11s |
-| `Build Executable & Installer` | `windows-latest` | ✓ PASSED | 2m 18s |
+| `Unit Tests on Windows (Python 3.10)` | `windows-latest` | ✓ PASSED | 35s |
+| `Unit Tests on Windows (Python 3.11)` | `windows-latest` | ✓ PASSED | 40s |
+| `Unit Tests on Windows (Python 3.12)` | `windows-latest` | ✓ PASSED | 31s |
+| `Platform-Neutral Unit Tests` | `ubuntu-latest` | ✓ PASSED | 10s |
+| `Build Executable & Installer` | `windows-latest` | ✓ PASSED | 1m 58s |
 
 ### Artifact & Checksum Hashes
 - **Artifact Zip**: `CloudBackup-Windows-x64-Release` (ID: `9842645745`, Size: 56,267,998 bytes)
@@ -65,17 +65,24 @@ This pull request establishes Phase 1 Windows portability, standalone executable
 
 ---
 
-## 3. Supplementary Platform-Neutral Docker Testing
+## 3. Host Preflight vs. Docker Validation Status
 
 > [!NOTE]
-> **LABEL: SUPPLEMENTARY PLATFORM-NEUTRAL VALIDATION ONLY**
-> Docker testing provides hermetic regression testing and secret scanning. It does **NOT** validate Windows installer compilation, UAC elevation, `ProgramData` ACLs, Task Scheduler, or Windows runtime security controls.
+> **LABEL: SUPPLEMENTARY PLATFORM-NEUTRAL VALIDATION ONLY**  
+> Docker validation runs platform-neutral tests and repository pattern scanning on Linux. Image construction installs hash-locked dependencies (`requirements-test.txt`), while container **runtime execution** is specified with `--network none`.  
+> Docker does **NOT** validate Windows installer compilation, UAC elevation, `ProgramData` ACLs, Task Scheduler, Start Menu integration, Windows runtime behavior, backup integrity, or restore correctness.
 
-### Hardened Container Setup
-- Base Image: `python:3.11-slim@sha256:4d60c497e411b0e008d5fcfc4fdf4c7fbdbbcda3733b1e389d469efb507204f6`
-- Execution: Non-root user (`uid=10001`), `--read-only`, `--network none`, `--cap-drop ALL`, `--security-opt no-new-privileges`, `--tmpfs /tmp`.
-- Secret Scanner (`scripts/scan_secrets.py`): Verified 0 credentials, 0 OAuth tokens, 0 private keys, and 0 rclone configs present in codebase.
-- Platform-Neutral Tests: 19/19 passed cleanly (`tests/test_dedup.py`, `tests/test_rotation.py`, `tests/test_schema.py`, `tests/test_subprocess_safety.py`, `tests/test_resource_resolution.py`).
+### Status Clarification
+- **Host Preflight**: Completed successfully (`.venv/bin/python scripts/run_docker_tests.py`):
+  - 19 platform-neutral unit tests passed (`tests/test_dedup.py`, `tests/test_rotation.py`, `tests/test_schema.py`, `tests/test_subprocess_safety.py`, `tests/test_resource_resolution.py`).
+  - Repository pattern scanner (`scripts/scan_secrets.py`) passed with 0 secret findings.
+- **Local Docker Daemon Availability**: The local Docker Desktop daemon was unavailable (`Cannot connect to the Docker daemon`).
+- **Container Runtime Status**: The hardened Docker container definition (`Dockerfile.test`) and hash-locked test dependencies (`requirements-test.txt`) are committed to the repository, but actual in-container execution using:
+  ```bash
+  docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:exec,mode=1777 cloudbackup-test
+  ```
+  remains pending Docker daemon availability on host or container test runners.
+- **Release-Blocking Gate**: The clean Windows 11 x64 VM acceptance checklist remains mandatory before a stable release or production-data use.
 
 ---
 
@@ -83,7 +90,7 @@ This pull request establishes Phase 1 Windows portability, standalone executable
 
 Before publishing a stable release or using CloudBackup to protect production data, complete the following gates on a fresh Windows 11 x64 virtual machine:
 
-1. [ ] **Download Artifact**: Download `CloudBackup-Windows-x64-Release` from CI run `33620733985`.
+1. [ ] **Download Artifact**: Download `CloudBackup-Windows-x64-Release` from CI run `33622756010`.
 2. [ ] **Verify Hash**: Confirm artifact SHA-256 digest matches `d791e62691f0aa4b85e5c2b96509d499c5c0d24bd86cbbb7fcb4a89b910c8db4`.
 3. [ ] **Clean VM Isolation**: Verify test VM has no pre-existing Python, Git, pip, or rclone.
 4. [ ] **Install & Directory Check**: Execute `CloudBackup-Setup.exe`; confirm binaries under `C:\Program Files\CloudBackup` and data dirs under `C:\ProgramData\CloudBackup`.

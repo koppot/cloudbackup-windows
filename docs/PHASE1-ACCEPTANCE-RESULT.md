@@ -3,10 +3,10 @@
 > [!IMPORTANT]
 > **FINAL DECISION**: **READY TO MERGE AS DEVELOPMENT PREVIEW**
 > - **Branch**: `feature/windows-portability-installer`
-> - **Head Commit**: `39a5de39d67221be77546c98f2ea38bc5c31b1c2`
+> - **Head Commit**: `5c7facff2548991d124ffc1c2e48f8d2988ee34d`
 > - **Pull Request**: [#1 — feat(windows): Phase 1 portability, packaging, installer, and CI (Development Preview)](https://github.com/koppot/cloudbackup-windows/pull/1)
 > - **PR State**: Open, Unmerged, Clean-Mergeable (`MERGEABLE` / `CLEAN`)
-> - **GitHub Actions CI Status**: **100% SUCCESS across all 5 matrix jobs** (`33621715139` & `33621719895`)
+> - **GitHub Actions CI Status**: **100% SUCCESS across all 5 matrix jobs** (`33622756010` & `33622761386`)
 
 ---
 
@@ -15,26 +15,26 @@
 - **Repository**: [https://github.com/koppot/cloudbackup-windows](https://github.com/koppot/cloudbackup-windows)
 - **Target Branch**: `main`
 - **Feature Branch**: `feature/windows-portability-installer`
-- **Head Commit SHA**: `39a5de39d67221be77546c98f2ea38bc5c31b1c2`
+- **Head Commit SHA**: `5c7facff2548991d124ffc1c2e48f8d2988ee34d`
 - **Pull Request URL**: [https://github.com/koppot/cloudbackup-windows/pull/1](https://github.com/koppot/cloudbackup-windows/pull/1)
 
 ---
 
 ## 2. GitHub Actions CI/CD Pipeline Verification
 
-- **Push Run ID**: `33621715139` ([View Run Logs](https://github.com/koppot/cloudbackup-windows/actions/runs/33621715139))
-- **PR Run ID**: `33621719895` ([View Run Logs](https://github.com/koppot/cloudbackup-windows/actions/runs/33621719895))
+- **Push Run ID**: `33622756010` ([View Run Logs](https://github.com/koppot/cloudbackup-windows/actions/runs/33622756010))
+- **PR Run ID**: `33622761386` ([View Run Logs](https://github.com/koppot/cloudbackup-windows/actions/runs/33622761386))
 - **CI Outcome**: **PASSED (100% Success)**
 
 ### CI Matrix Execution Breakdown
 
 | Job Name | Platform | Status | Duration | Key Step Verification |
 |---|---|---|---:|---|
-| `Unit Tests on Windows (3.10)` | `windows-latest` | ✓ PASSED | 31s | Full pytest suite passed |
-| `Unit Tests on Windows (3.11)` | `windows-latest` | ✓ PASSED | 26s | Full pytest suite passed |
-| `Unit Tests on Windows (3.12)` | `windows-latest` | ✓ PASSED | 38s | Full pytest suite passed |
-| `Platform-Neutral Unit Tests` | `ubuntu-latest` | ✓ PASSED | 13s | 19 platform-neutral tests passed |
-| `Build Executable & Installer` | `windows-latest` | ✓ PASSED | 1m 55s | Source scan, rclone hash staging, PyInstaller build, smoke test, Inno Setup build, artifact scan |
+| `Unit Tests on Windows (3.10)` | `windows-latest` | ✓ PASSED | 35s | Full pytest suite passed |
+| `Unit Tests on Windows (3.11)` | `windows-latest` | ✓ PASSED | 40s | Full pytest suite passed |
+| `Unit Tests on Windows (3.12)` | `windows-latest` | ✓ PASSED | 31s | Full pytest suite passed |
+| `Platform-Neutral Unit Tests` | `ubuntu-latest` | ✓ PASSED | 10s | 19 platform-neutral tests passed |
+| `Build Executable & Installer` | `windows-latest` | ✓ PASSED | 1m 58s | Source scan, rclone hash staging, PyInstaller build, smoke test, Inno Setup build, artifact scan |
 
 ### Source & Artifact Secret Pattern Scanning
 - **Source Scan Step**: `Scan Source Tree for Secret Patterns` — **PASSED** (0 credentials, tokens, or forbidden files found).
@@ -47,32 +47,18 @@
 
 ---
 
-## 3. Docker Platform-Neutral Validation Evidence & Limitations
+## 3. Host Preflight vs. Docker Validation Status
 
-### Container Hardening Specification (`Dockerfile.test`)
-- **Base Image**: `python:3.11-slim@sha256:4d60c497e411b0e008d5fcfc4fdf4c7fbdbbcda3733b1e389d469efb507204f6`
-- **Dependencies**: Hash-locked `requirements-test.txt`
-- **Execution User**: `testuser` (`uid=10001`, `gid=10001`)
-- **PyCache & Temp Isolation**: `PYTHONPYCACHEPREFIX=/tmp/pycache`, `TMPDIR=/tmp`
-- **Build Context Hygiene**: `.dockerignore` excludes `.git/`, `.venv/`, `build/`, `dist/`, secrets, logs, and databases.
-
-### In-Container Execution Command
-```bash
-docker build -f Dockerfile.test -t cloudbackup-test .
-docker run --rm \
-  --network none \
-  --read-only \
-  --cap-drop ALL \
-  --security-opt no-new-privileges \
-  --tmpfs /tmp:exec,mode=1777 \
-  cloudbackup-test
-```
-
-### Host Preflight Result Summary
-Executing `scripts/run_docker_tests.py` in host preflight mode yielded:
-- **Context**: `HOST PREFLIGHT (Host Environment)`
-- **Secret Pattern Scan**: `PASSED`
-- **Platform-Neutral Tests**: `19 executed (19 passed, 0 failed, 0 errors, 0 skipped)`
+### Status Clarification
+- **Host Preflight**: Completed successfully (`.venv/bin/python scripts/run_docker_tests.py`):
+  - 19 platform-neutral unit tests passed (`tests/test_dedup.py`, `tests/test_rotation.py`, `tests/test_schema.py`, `tests/test_subprocess_safety.py`, `tests/test_resource_resolution.py`).
+  - Repository pattern scanner (`scripts/scan_secrets.py`) passed with 0 secret findings.
+- **Local Docker Daemon Availability**: The local Docker Desktop daemon was unavailable (`Cannot connect to the Docker daemon`).
+- **Container Runtime Status**: The hardened Docker container definition (`Dockerfile.test`) and hash-locked test dependencies (`requirements-test.txt`) are committed to the repository, but actual in-container execution using:
+  ```bash
+  docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:exec,mode=1777 cloudbackup-test
+  ```
+  remains pending Docker daemon availability on host or container test runners.
 
 ### Explicit Statement of Docker Limitations
 > [!WARNING]
@@ -86,7 +72,7 @@ The following 15-gate acceptance matrix defines the requirement for stable relea
 
 | Gate | Test Action | Status | Evidence & Summary |
 |---|---|---|---|
-| 1 | Artifact Retrieval | **PASS (CI)** | Artifact `CloudBackup-Windows-x64-Release` produced by CI run `33621715139` on commit `39a5de3`. |
+| 1 | Artifact Retrieval | **PASS (CI)** | Artifact `CloudBackup-Windows-x64-Release` produced by CI run `33622756010` on commit `5c7facf`. |
 | 2 | Artifact Checksum Verification | **PASS (CI)** | SHA-256 `d791e62691f0aa4b85e5c2b96509d499c5c0d24bd86cbbb7fcb4a89b910c8db4` matches manifest `checksums.sha256`. |
 | 3 | Clean Environment Confirmation | **PENDING VM** | Isolated Windows 11 VM setup (verifying absence of Python, Git, pip, and system rclone). |
 | 4 | Installer Execution & Shortcuts | **PENDING VM** | Inno Setup installer compilation verified in CI (`CloudBackup-Setup.exe`). VM GUI launch pending. |
