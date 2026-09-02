@@ -83,6 +83,14 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         path = parsed.path
 
         if path == "/login":
+            # First-run: no password configured — auto-issue a session and redirect.
+            if auth.is_first_run(AUTH_FILE):
+                token = auth.create_session(SESSION_FILE)
+                self.send_response(302)
+                self.send_header("Set-Cookie", f"session={token}; HttpOnly; Path=/")
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
             html = """<!DOCTYPE html><html><head><title>CloudBackup Login</title><style>body{background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;}.card{background:#141414;padding:2rem;border-radius:12px;border:1px solid #262626;width:320px;}input{padding:0.5rem;width:100%;box-sizing:border-box;margin-bottom:1rem;background:#000;color:#fff;border:1px solid #404040;border-radius:4px;}button{padding:0.5rem 1rem;background:#38bdf8;color:#000;font-weight:bold;border:none;border-radius:4px;width:100%;cursor:pointer;}</style></head><body><div class="card"><h2>CloudBackup Login</h2><form method="POST" action="/login"><input type="password" name="password" placeholder="Password" required><button type="submit">Log In</button></form></div></body></html>"""
             return self.respond_html(html)
 
@@ -91,6 +99,7 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Location", "/login")
             self.end_headers()
             return
+
 
         db.init_db(DB_PATH)
 
