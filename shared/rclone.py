@@ -1,44 +1,39 @@
 """
-shared/rclone.py — rclone subprocess wrapper for CloudBackup for Windows.
+shared/rclone.py — rclone subprocess wrapper with strict fail-closed discovery & environment sanitization.
 
 Responsibilities:
-  - Build and execute rclone copy / rclone sync commands as subprocesses.
-  - Write immutable per-run log files.
-  - Detect rotation trigger conditions (exit code 5, capacity below threshold).
-  - Check drive capacity via `rclone about`.
-  - Support browser-based OAuth authorization flow.
-  - Never store or log passphrases.
-
-All rclone operations are run via subprocess, never via rclone mount.
-
-Exit code semantics (rclone):
-  0  = Success
-  1  = Syntax or usage error
-  2  = Error not otherwise categorised
-  3  = Directory not found
-  4  = File not found
-  5  = Temporary error; retried — also used for quota/drive-full conditions
-  6  = Less serious errors (e.g. 1 file failed to transfer)
-  7  = Fatal error
-  8  = Transfer exceeded — limits crossed
-  9  = Operation successful, but no files transferred
+  - Fail-closed rclone discovery: require verified bundled rclone.exe with SHA-256 hash verification against shared/rclone_manifest.json. Missing manifest, missing bundle, or hash mismatch halts execution immediately.
+  - External override allowed ONLY via explicit absolute path.
+  - Prohibit bare 'rclone' or implicit PATH lookups.
+  - Sanitize process environment: clear inherited RCLONE_CONFIG/RCLONE_CONF variables.
+  - Execute rclone copy / sync using argument lists without shell=True.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 import re
-import shutil
 import subprocess
-import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from .config import AppConfig, DriveRemoteConfig, RcloneConfig
+from .paths import (
+    get_config_dir,
+    get_default_rclone_conf_path,
+    get_log_dir,
+    get_resource_path,
+    validate_local_path,
+)
+from .subprocess_utils import redact_cmd_list, redact_secrets, run_safe_subprocess
+
+log = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -59,7 +54,7 @@ class RcloneResult:
     files_transferred: int = 0
     files_checked: int = 0
     errors: int = 0
-    drive_full: bool = False      # True if exit code or output indicates quota exceeded
+    drive_full: bool = False
 
     @property
     def success(self) -> bool:
@@ -67,15 +62,12 @@ class RcloneResult:
 
     @property
     def partial(self) -> bool:
-        """Non-fatal transfer errors: some files failed but others succeeded."""
         return self.exit_code == 6
 
     @property
     def status(self) -> str:
-        if self.exit_code == 0:
+        if self.exit_code == 0 or self.exit_code == 9:
             return "success"
-        if self.exit_code == 9:
-            return "success"   # No files to transfer = success
         if self.exit_code == 6:
             return "partial"
         if self.drive_full:
@@ -83,7 +75,7 @@ class RcloneResult:
         return "failed"
 
     def command_str(self) -> str:
-        return " ".join(self.command)
+        return " ".join(redact_cmd_list(self.command))
 
 
 @dataclass
@@ -95,21 +87,102 @@ class CapacityInfo:
     pct_used: float
     raw: dict = field(default_factory=dict)
 
-    @property
-    def is_below_threshold(self) -> bool:
-        """Evaluated by the rotation engine against configured margins."""
-        return False   # Caller compares against config thresholds
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fail-Closed rclone Discovery Policy
+# ─────────────────────────────────────────────────────────────────────────────
+
+def resolve_rclone_binary(configured_path: Optional[str] = None) -> Tuple[Path, str]:
+    """
+    Resolve and validate the rclone executable strictly according to trust policy.
+
+    Discovery Policy:
+    1. If configured_path is passed and non-empty:
+       - Must be an absolute path (os.path.isabs). Otherwise, raise ValueError.
+       - Verify existence and execute `rclone version` check.
+    2. Default / Empty configured_path:
+       - Require bundled rclone binary inside PyInstaller app bundle or repository.
+       - Load shared/rclone_manifest.json. Missing or malformed manifest raises ValueError/FileNotFoundError.
+       - Check bundled executable existence. Missing binary raises FileNotFoundError.
+       - Verify SHA-256 hash against manifest expected_sha256. Mismatch fails closed immediately (raises ValueError).
+    3. NEVER fallback to arbitrary PATH lookup or shutil.which("rclone").
+
+    Returns:
+        (resolved_path, discovery_mode_label)
+    """
+    # 1. Check explicit external override path if configured
+    if configured_path is not None:
+        clean_path = str(configured_path).strip()
+        if clean_path:
+            if not os.path.isabs(clean_path):
+                raise ValueError(
+                    f"External rclone override path must be an absolute path. Got: '{configured_path}'. "
+                    "PATH-derived lookups and bare 'rclone' references are disabled for security."
+                )
+            cand_path = Path(clean_path)
+            if not cand_path.exists() or not cand_path.is_file():
+                raise FileNotFoundError(f"Configured rclone binary path not found or not a file: {clean_path}")
+
+            # Validate by running `rclone version`
+            res = run_safe_subprocess([str(cand_path), "version"], timeout=5)
+            if not res.success:
+                raise ValueError(f"Configured external rclone binary at {clean_path} failed version check: {res.stderr}")
+
+            log.warning("Using administrator-configured external rclone override at %s", cand_path)
+            return cand_path, "external_override"
+
+    # 2. Bundled binary resolution & fail-closed hash validation
+    manifest_path = get_resource_path("shared/rclone_manifest.json")
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Fail-closed error: rclone manifest missing at {manifest_path}. Execution halted."
+        )
+
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as mf:
+            manifest = json.load(mf)
+    except Exception as exc:
+        raise ValueError(f"Fail-closed error: Malformed rclone manifest at {manifest_path}: {exc}") from exc
+
+    bundled_rel = manifest.get("bundled_binary_relative_path", "bin/rclone.exe")
+    bundled_candidates = [
+        get_resource_path(bundled_rel),
+        get_resource_path("rclone.exe"),
+        get_resource_path("bin/rclone"),
+    ]
+
+    resolved_cand: Optional[Path] = None
+    for cand in bundled_candidates:
+        if cand.exists() and cand.is_file():
+            resolved_cand = cand
+            break
+
+    if not resolved_cand:
+        raise FileNotFoundError(
+            f"Fail-closed error: Bundled rclone executable missing ({bundled_rel}). Execution halted."
+        )
+
+    expected_hash = manifest.get("expected_sha256")
+    if expected_hash:
+        hasher = hashlib.sha256()
+        with open(resolved_cand, "rb") as f:
+            while chunk := f.read(65536):
+                hasher.update(chunk)
+        computed_hash = hasher.hexdigest()
+        if computed_hash.lower() != expected_hash.lower():
+            raise ValueError(
+                f"Fail-closed security check failed: Bundled rclone executable SHA-256 hash mismatch! "
+                f"Computed '{computed_hash}' vs Expected '{expected_hash}'. Execution halted."
+            )
+
+    return resolved_cand, "bundled"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Log file management
+# Log File Management
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _make_log_path(log_dir: str, run_id: Optional[int] = None) -> str:
-    """
-    Return a deterministic, immutable log file path.
-    Pattern: <log_dir>/YYYY-MM-DD/run-<id|timestamp>.log
-    """
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     day_dir = Path(log_dir) / today
     day_dir.mkdir(parents=True, exist_ok=True)
@@ -117,15 +190,9 @@ def _make_log_path(log_dir: str, run_id: Optional[int] = None) -> str:
     return str(day_dir / f"run-{suffix}.log")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Stats parser — extract rclone stats from log output
-# ─────────────────────────────────────────────────────────────────────────────
-
-_STATS_BYTES_RE    = re.compile(r"Transferred:\s+([\d.]+\s+[KMGTP]?iB)", re.I)
-_STATS_FILES_RE    = re.compile(r"Transferred:\s+(\d+)\s*/\s*\d+", re.I)
-_STATS_ERRORS_RE   = re.compile(r"Errors:\s+(\d+)", re.I)
-_STATS_CHECKS_RE   = re.compile(r"Checks:\s+(\d+)", re.I)
-_QUOTA_ERR_RE      = re.compile(
+_STATS_ERRORS_RE = re.compile(r"Errors:\s+(\d+)", re.I)
+_STATS_CHECKS_RE = re.compile(r"Checks:\s+(\d+)", re.I)
+_QUOTA_ERR_RE = re.compile(
     r"(quota exceeded|storage quota|drive storage quota|"
     r"The user's Drive storage quota has been exceeded|"
     r"userRateLimitExceeded|rateLimitExceeded|"
@@ -135,7 +202,6 @@ _QUOTA_ERR_RE      = re.compile(
 
 
 def _parse_stats(text: str) -> dict:
-    """Extract transfer statistics from rclone log output."""
     stats: dict = {
         "bytes_transferred": 0,
         "files_transferred": 0,
@@ -143,62 +209,25 @@ def _parse_stats(text: str) -> dict:
         "errors": 0,
         "drive_full": bool(_QUOTA_ERR_RE.search(text)),
     }
-
     m = _STATS_ERRORS_RE.search(text)
     if m:
         stats["errors"] = int(m.group(1))
-
     m = _STATS_CHECKS_RE.search(text)
     if m:
         stats["files_checked"] = int(m.group(1))
-
-    # Count transferred file lines
     stats["files_transferred"] = len(re.findall(r"Copied\s*\(new\)|Copied\s*\(replaced", text))
-
     return stats
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tailscale IP detection
-# ─────────────────────────────────────────────────────────────────────────────
-
 def detect_tailscale_ip() -> Optional[str]:
-    """
-    Return the Tailscale interface IP (100.x.x.x) if available, else None.
-    Used by the server to bind to the correct interface.
-    """
     try:
-        result = subprocess.run(
-            ["tailscale", "ip", "-4"],
-            capture_output=True, text=True, timeout=5,
-        )
-        ip = result.stdout.strip()
+        res = run_safe_subprocess(["tailscale", "ip", "-4"], timeout=5)
+        ip = res.stdout.strip()
         if ip and ip.startswith("100."):
-            return ip
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-
-    # Fallback: inspect network interfaces (if fcntl is available)
-    try:
-        import socket
-        import struct
-        import fcntl
-
-        SIOCGIFADDR = 0x8915
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        iface = b"tailscale0"
-        result_bytes = fcntl.ioctl(
-            s.fileno(), SIOCGIFADDR,
-            struct.pack("256s", iface[:15])
-        )
-        ip = socket.inet_ntoa(result_bytes[20:24])
-        if ip.startswith("100."):
             return ip
     except Exception:
         pass
-
     return None
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -206,38 +235,17 @@ def detect_tailscale_ip() -> Optional[str]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class RcloneRunner:
-    """
-    Executes rclone commands as subprocesses.
-
-    All operations:
-      - Run via subprocess (never mount).
-      - Write output to an immutable log file.
-      - Are non-destructive by default (copy mode).
-      - Detect drive-full conditions and set result.drive_full accordingly.
-    """
 
     def __init__(self, cfg: AppConfig):
         self.cfg = cfg
-        self._rclone_bin = cfg.rclone.bin
-        self._rclone_conf = cfg.rclone_conf
-        self._log_dir = cfg.server.log_dir
+        self._rclone_bin_cfg = cfg.rclone.bin
+        self._rclone_conf = cfg.rclone_conf or str(get_default_rclone_conf_path())
+        self._log_dir = cfg.server.log_dir or str(get_log_dir())
         self._base_flags = cfg.rclone.base_flags()
 
     def _which_rclone(self) -> str:
-        """Resolve the rclone binary path, raising clearly if not found."""
-        if os.path.isabs(self._rclone_bin):
-            if not os.path.isfile(self._rclone_bin):
-                raise FileNotFoundError(
-                    f"rclone binary not found at configured path: {self._rclone_bin}"
-                )
-            return self._rclone_bin
-        found = shutil.which(self._rclone_bin)
-        if not found:
-            raise FileNotFoundError(
-                f"rclone binary '{self._rclone_bin}' not found in PATH. "
-                "Install rclone from https://rclone.org/install/"
-            )
-        return found
+        bin_path, mode = resolve_rclone_binary(self._rclone_bin_cfg)
+        return str(bin_path)
 
     def _conf_flags(self) -> List[str]:
         return ["--config", self._rclone_conf]
@@ -272,17 +280,9 @@ class RcloneRunner:
         source: str,
         dest: str,
         extra_flags: Optional[List[str]] = None,
-        dry_run: bool = True,   # ALWAYS dry_run=True by default for sync
+        dry_run: bool = True,
         log_path: Optional[str] = None,
     ) -> List[str]:
-        """
-        Build a sync command.
-
-        WARNING: rclone sync DELETES files on the destination that are not
-        present in the source. This is a destructive operation.
-        dry_run defaults to True. The caller must explicitly pass dry_run=False
-        after the user has confirmed the dry-run output in the UI.
-        """
         cmd = [
             self._which_rclone(),
             "sync",
@@ -306,25 +306,25 @@ class RcloneRunner:
         log_path: Optional[str],
         on_output: Optional[Callable[[str], None]] = None,
     ) -> RcloneResult:
-        """
-        Execute a rclone command, stream output to log file and optional callback.
-        Returns a structured RcloneResult.
-        """
         started_at = datetime.now(timezone.utc).isoformat()
         stdout_lines: List[str] = []
-        stderr_lines: List[str] = []
 
         log_fh = None
         if log_path:
             log_fh = open(log_path, "w", encoding="utf-8")
-            log_fh.write(f"# CloudBackup for Windows — rclone log\n")
-
-            log_fh.write(f"# Command: {' '.join(cmd)}\n")
+            log_fh.write("# CloudBackup for Windows — rclone log\n")
+            log_fh.write(f"# Command: {' '.join(redact_cmd_list(cmd))}\n")
             log_fh.write(f"# Started: {started_at}\n")
             log_fh.write(f"# {'=' * 60}\n\n")
             log_fh.flush()
 
+        env = dict(os.environ)
+        env.pop("RCLONE_CONFIG", None)
+        env.pop("RCLONE_CONF", None)
+        env["RCLONE_CONFIG"] = self._rclone_conf
+
         try:
+            creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -332,9 +332,12 @@ class RcloneRunner:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                env=env,
+                creationflags=creation_flags,
             )
 
-            for line in proc.stdout:  # type: ignore[union-attr]
+            for raw_line in proc.stdout:  # type: ignore[union-attr]
+                line = redact_secrets(raw_line)
                 stdout_lines.append(line)
                 if log_fh:
                     log_fh.write(line)
@@ -347,7 +350,7 @@ class RcloneRunner:
 
         except Exception as exc:
             exit_code = -1
-            err_line = f"[ERROR] Failed to run rclone: {exc}\n"
+            err_line = f"[ERROR] Failed to run rclone: {redact_secrets(str(exc))}\n"
             stdout_lines.append(err_line)
             if log_fh:
                 log_fh.write(err_line)
@@ -363,15 +366,13 @@ class RcloneRunner:
         finished_at = datetime.now(timezone.utc).isoformat()
         full_output = "".join(stdout_lines)
         stats = _parse_stats(full_output)
-
-        # Drive full: exit code 5 OR 8, OR quota error text in output
         drive_full = stats["drive_full"] or exit_code in (5, 8)
 
         return RcloneResult(
             command=cmd,
             exit_code=exit_code,
             stdout=full_output,
-            stderr="",   # merged into stdout via STDOUT redirect
+            stderr="",
             log_path=log_path,
             started_at=started_at,
             finished_at=finished_at,
@@ -381,10 +382,6 @@ class RcloneRunner:
             errors=stats.get("errors", 0),
             drive_full=drive_full,
         )
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Public API
-    # ─────────────────────────────────────────────────────────────────────────
 
     def copy(
         self,
@@ -396,18 +393,6 @@ class RcloneRunner:
         dry_run: bool = False,
         on_output: Optional[Callable[[str], None]] = None,
     ) -> RcloneResult:
-        """
-        Run rclone copy from source path to dest_remote:dest_subpath.
-
-        Args:
-            source:       Local source path (absolute).
-            dest_remote:  rclone crypt remote name including colon, e.g. "gdrive1_crypt:".
-            dest_subpath: Path within the remote, e.g. "hostname/config/etc".
-            run_id:       Optional run ID for log file naming.
-            extra_flags:  Additional rclone flags.
-            dry_run:      If True, adds --dry-run (no files transferred).
-            on_output:    Optional callback receiving each output line in real-time.
-        """
         dest = f"{dest_remote.rstrip(':')}/{dest_subpath.lstrip('/')}"
         log_path = _make_log_path(self._log_dir, run_id)
         cmd = self._build_copy_command(
@@ -426,22 +411,9 @@ class RcloneRunner:
         dest_subpath: str,
         run_id: Optional[int] = None,
         extra_flags: Optional[List[str]] = None,
-        dry_run: bool = True,   # Always default True — destructive operation
+        dry_run: bool = True,
         on_output: Optional[Callable[[str], None]] = None,
     ) -> RcloneResult:
-        """
-        Run rclone sync.
-
-        DESTRUCTIVE: Deletes files on destination not present in source.
-        dry_run defaults to True. Set dry_run=False only after UI confirmation.
-        The UI layer MUST enforce a two-step confirmation before calling this
-        with dry_run=False.
-        """
-        if not dry_run:
-            # Extra guard: check settings table sync_mode_enabled at the engine layer.
-            # This is a belt-and-suspenders check; the route layer checks it too.
-            pass   # Engine-level check added in engine.py
-
         dest = f"{dest_remote.rstrip(':')}/{dest_subpath.lstrip('/')}"
         log_path = _make_log_path(self._log_dir, run_id)
         cmd = self._build_sync_command(
@@ -453,59 +425,27 @@ class RcloneRunner:
         )
         return self._run_command(cmd, log_path, on_output=on_output)
 
-    def copy_restore(
-        self,
-        source_remote: str,
-        source_subpath: str,
-        dest: str,
-        run_id: Optional[int] = None,
-        dry_run: bool = True,
-        on_output: Optional[Callable[[str], None]] = None,
-    ) -> RcloneResult:
-        """
-        Restore: rclone copy from Drive remote back to local path.
-        Always dry_run=True by default.
-        """
-        source = f"{source_remote.rstrip(':')}/{source_subpath.lstrip('/')}"
-        log_path = _make_log_path(self._log_dir, run_id)
-        cmd = self._build_copy_command(
-            source=source,
-            dest=dest,
-            dry_run=dry_run,
-            log_path=log_path,
-        )
-        return self._run_command(cmd, log_path, on_output=on_output)
-
     def check_capacity(self, remote: DriveRemoteConfig) -> Optional[CapacityInfo]:
-        """
-        Query Drive storage quota via `rclone about`.
-        Returns CapacityInfo or None if the query fails (e.g. unauthorized).
-        """
-        rclone_bin = self._which_rclone()
-        cmd = [
-            rclone_bin, "about",
-            f"{remote.base_remote.rstrip(':')}:",
-            "--json",
-        ] + self._conf_flags()
-
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode != 0:
+            rclone_bin = self._which_rclone()
+            cmd = [
+                rclone_bin, "about",
+                f"{remote.base_remote.rstrip(':')}:",
+                "--json",
+            ] + self._conf_flags()
+
+            res = run_safe_subprocess(cmd, timeout=30)
+            if not res.success:
                 return None
 
-            data = json.loads(result.stdout)
+            data = json.loads(res.stdout)
             total_bytes = data.get("total", 0)
-            used_bytes  = data.get("used", 0)
-            free_bytes  = data.get("free", total_bytes - used_bytes)
+            used_bytes = data.get("used", 0)
+            free_bytes = data.get("free", total_bytes - used_bytes)
 
             total_gb = round(total_bytes / (1024 ** 3), 2) if total_bytes else 0.0
-            used_gb  = round(used_bytes  / (1024 ** 3), 2)
-            free_gb  = round(free_bytes  / (1024 ** 3), 2)
+            used_gb = round(used_bytes / (1024 ** 3), 2)
+            free_gb = round(free_bytes / (1024 ** 3), 2)
             pct_used = round((used_gb / total_gb * 100), 1) if total_gb > 0 else 0.0
 
             return CapacityInfo(
@@ -516,7 +456,7 @@ class RcloneRunner:
                 pct_used=pct_used,
                 raw=data,
             )
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
+        except Exception:
             return None
 
     def is_rotation_needed(
@@ -525,12 +465,8 @@ class RcloneRunner:
         reserve_pct: float,
         reserve_bytes_gb: float,
     ) -> bool:
-        """
-        Return True if the drive should be rotated based on capacity.
-        Called before each backup job runs to catch nearly-full drives early.
-        """
         if capacity is None:
-            return False   # Unknown capacity: do not preemptively rotate
+            return False
         reserve_gb = reserve_bytes_gb / (1024 ** 3)
         pct_threshold = 100.0 - reserve_pct
         return (
@@ -538,43 +474,10 @@ class RcloneRunner:
             or capacity.pct_used > pct_threshold
         )
 
-    def authorize_remote(self, remote_name: str) -> bool:
-        """
-        Launch the browser-based OAuth flow for a Google Drive remote.
-        Calls `rclone authorize drive` which opens the system browser.
-        This is interactive and must be run in a terminal or triggered via
-        the UI with instructions to the user (token is returned to config).
-
-        Returns True if authorization succeeded (based on exit code).
-        """
-        rclone_bin = self._which_rclone()
-        cmd = [rclone_bin, "authorize", "drive"] + self._conf_flags()
-
-        try:
-            result = subprocess.run(cmd, timeout=300)
-            return result.returncode == 0
-        except subprocess.TimeoutExpired:
-            return False
-
-    def list_remotes(self) -> List[str]:
-        """List remotes configured in rclone.conf."""
-        rclone_bin = self._which_rclone()
-        try:
-            result = subprocess.run(
-                [rclone_bin, "listremotes"] + self._conf_flags(),
-                capture_output=True, text=True, timeout=10,
-            )
-            return [r.strip() for r in result.stdout.splitlines() if r.strip()]
-        except (subprocess.TimeoutExpired, OSError):
-            return []
-
     def version(self) -> str:
-        """Return rclone version string."""
         try:
-            result = subprocess.run(
-                [self._which_rclone(), "version"],
-                capture_output=True, text=True, timeout=5,
-            )
-            return result.stdout.splitlines()[0] if result.stdout else "unknown"
+            res = run_safe_subprocess([self._which_rclone(), "version"], timeout=5)
+            lines = res.stdout.splitlines()
+            return lines[0] if lines else "unknown"
         except Exception:
             return "unknown"

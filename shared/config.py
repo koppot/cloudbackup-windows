@@ -1,5 +1,5 @@
 """
-shared/config.py — CloudBackup for Windows configuration loader.
+shared/config.py — CloudBackup for Windows configuration loader with central path integration.
 """
 
 from __future__ import annotations
@@ -9,44 +9,55 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
+from .paths import (
+    get_config_dir,
+    get_default_db_path,
+    get_default_rclone_conf_path,
+    get_log_dir,
+    get_programdata_dir,
+    get_state_dir,
+    get_temp_dir,
+    validate_local_path,
+)
+
 try:
     import yaml
 except ImportError:
-    raise RuntimeError(
-        "PyYAML is required. Install with: pip install pyyaml"
-    )
+    raise RuntimeError("PyYAML is required. Install with: pip install pyyaml")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Sub-configs
-# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class DatabaseConfig:
-    db_path: str = r"C:\ProgramData\CloudBackup\state.db"
-    backup_dir: str = r"C:\ProgramData\CloudBackup\catalog_backups"
-    state_path: str = r"C:\ProgramData\CloudBackup\state.json"
+    db_path: str = ""
+    backup_dir: str = ""
+    state_path: str = ""
 
+    def __post_init__(self):
+        if not self.db_path:
+            self.db_path = str(get_default_db_path())
+        if not self.backup_dir:
+            self.backup_dir = str(get_state_dir() / "catalog_backups")
+        if not self.state_path:
+            self.state_path = str(get_state_dir() / "state.json")
 
     @classmethod
     def from_dict(cls, d: dict) -> "DatabaseConfig":
         return cls(
-            db_path=d.get("db_path", cls.__dataclass_fields__["db_path"].default),
-            backup_dir=d.get("backup_dir", cls.__dataclass_fields__["backup_dir"].default),
-            state_path=d.get("state_path", cls.__dataclass_fields__["state_path"].default),
+            db_path=d.get("db_path", str(get_default_db_path())),
+            backup_dir=d.get("backup_dir", str(get_state_dir() / "catalog_backups")),
+            state_path=d.get("state_path", str(get_state_dir() / "state.json")),
         )
 
 
 @dataclass
 class DriveRemoteConfig:
-    """One Google Drive account — base + data crypt + optional secrets crypt."""
-    name: str                          # e.g. "gdrive1_crypt"
-    base_remote: str                   # e.g. "gdrive1:"
-    crypt_remote: str                  # e.g. "gdrive1_crypt:"
+    name: str
+    base_remote: str
+    crypt_remote: str
     priority: int = 1
     enabled: bool = True
     data_subdir: str = "backup"
-    secrets_crypt_remote: Optional[str] = None   # e.g. "gdrive1_secrets_crypt:"
+    secrets_crypt_remote: Optional[str] = None
     secrets_subdir: str = "secrets"
 
     @classmethod
@@ -73,7 +84,7 @@ class DriveRemoteConfig:
 class DrivesConfig:
     remotes: List[DriveRemoteConfig] = field(default_factory=list)
     reserve_margin_percent: float = 5.0
-    reserve_margin_bytes: int = 10 * 1024 ** 3   # 10 GB
+    reserve_margin_bytes: int = 10 * 1024 ** 3
 
     @classmethod
     def from_dict(cls, d: dict) -> "DrivesConfig":
@@ -91,7 +102,6 @@ class DrivesConfig:
         return None
 
     def enabled_by_priority(self) -> List[DriveRemoteConfig]:
-        """Return enabled remotes sorted by priority ascending (1 = highest)."""
         return sorted(
             [r for r in self.remotes if r.enabled],
             key=lambda r: r.priority,
@@ -142,7 +152,6 @@ class HostConfig:
 
 @dataclass
 class RcloneConfig:
-    """rclone transfer tuning parameters."""
     bin: str = "rclone"
     tpslimit: int = 10
     tpslimit_burst: int = 10
@@ -170,7 +179,6 @@ class RcloneConfig:
         )
 
     def base_flags(self) -> List[str]:
-        """Return the list of rclone flags derived from this config."""
         flags = [
             "--tpslimit", str(self.tpslimit),
             "--tpslimit-burst", str(self.tpslimit_burst),
@@ -188,40 +196,49 @@ class RcloneConfig:
 
 @dataclass
 class RestoreTestingConfig:
-    staging_dir: str = r"C:\ProgramData\CloudBackup\temp"
-
+    staging_dir: str = ""
     auto_cleanup: bool = True
+
+    def __post_init__(self):
+        if not self.staging_dir:
+            self.staging_dir = str(get_temp_dir() / "restore_test")
 
     @classmethod
     def from_dict(cls, d: dict) -> "RestoreTestingConfig":
         return cls(
-            staging_dir=d.get("staging_dir", cls.__dataclass_fields__["staging_dir"].default),
+            staging_dir=d.get("staging_dir", str(get_temp_dir() / "restore_test")),
             auto_cleanup=bool(d.get("auto_cleanup", True)),
         )
 
 
 @dataclass
 class SecretsConfig:
-    """References the secrets_class.yaml path; does NOT hold any secret values."""
-    class_file: str = r"C:\ProgramData\CloudBackup\secrets_class.yaml"
+    class_file: str = ""
     key_hint: str = "See password manager: secrets"
+
+    def __post_init__(self):
+        if not self.class_file:
+            self.class_file = str(get_config_dir() / "secrets_class.yaml")
 
     @classmethod
     def from_dict(cls, d: dict) -> "SecretsConfig":
         return cls(
-            class_file=d.get("class_file", cls.__dataclass_fields__["class_file"].default),
-            key_hint=d.get("key_hint", cls.__dataclass_fields__["key_hint"].default),
+            class_file=d.get("class_file", str(get_config_dir() / "secrets_class.yaml")),
+            key_hint=d.get("key_hint", "See password manager: secrets"),
         )
 
 
 @dataclass
 class ServerConfig:
-    """UI server settings."""
     host: str = "127.0.0.1"
     port: int = 8765
     tailscale_only: bool = False
     debug: bool = False
-    log_dir: str = r"C:\ProgramData\CloudBackup\logs"
+    log_dir: str = ""
+
+    def __post_init__(self):
+        if not self.log_dir:
+            self.log_dir = str(get_log_dir())
 
     @classmethod
     def from_dict(cls, d: dict) -> "ServerConfig":
@@ -230,17 +247,13 @@ class ServerConfig:
             port=int(d.get("port", 8765)),
             tailscale_only=bool(d.get("tailscale_only", False)),
             debug=bool(d.get("debug", False)),
-            log_dir=d.get("log_dir", cls.__dataclass_fields__["log_dir"].default),
+            log_dir=d.get("log_dir", str(get_log_dir())),
         )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Root config
-# ─────────────────────────────────────────────────────────────────────────────
-
 @dataclass
 class AppConfig:
-    rclone_conf: str           # Absolute path to rclone.conf
+    rclone_conf: str
     database: DatabaseConfig
     drives: DrivesConfig
     hosts: List[HostConfig]
@@ -248,12 +261,10 @@ class AppConfig:
     secrets: SecretsConfig
     server: ServerConfig
     restore_testing: RestoreTestingConfig
-    hostname: str = "supermicro.local"    # Used as top-level subdir on Drive: hostname/classname/
-
+    hostname: str = "supermicro.local"
 
     @classmethod
     def load(cls, path: str) -> "AppConfig":
-        """Load and validate config from a YAML file."""
         config_path = Path(path).expanduser().resolve()
         if not config_path.exists():
             raise FileNotFoundError(
@@ -267,8 +278,7 @@ class AppConfig:
         if not isinstance(raw, dict):
             raise ValueError(f"Config file is empty or invalid YAML: {config_path}")
 
-        rclone_conf = raw.get("rclone_conf", r"C:\ProgramData\CloudBackup\rclone.conf")
-
+        rclone_conf = raw.get("rclone_conf", str(get_default_rclone_conf_path()))
 
         return cls(
             rclone_conf=str(Path(rclone_conf).expanduser()),
@@ -278,40 +288,25 @@ class AppConfig:
             rclone=RcloneConfig.from_dict(raw.get("rclone", {})),
             secrets=SecretsConfig.from_dict(raw.get("secrets", {})),
             server=ServerConfig.from_dict(raw.get("server", {})),
-            restore_testing=RestoreTestingConfig.from_dict(
-                raw.get("restore_testing", {})
-            ),
-            hostname=raw.get("hostname", cls.__dataclass_fields__["hostname"].default),
+            restore_testing=RestoreTestingConfig.from_dict(raw.get("restore_testing", {})),
+            hostname=raw.get("hostname", "supermicro.local"),
         )
 
     def validate(self) -> List[str]:
-        """
-        Return a list of validation warnings.
-        Empty list = all checks passed.
-        """
         warnings: List[str] = []
 
         if not Path(self.rclone_conf).exists():
             warnings.append(
                 f"rclone.conf not found at {self.rclone_conf}. "
-                "Run 'rclone config' to create it."
+                "Run setup wizard to generate configuration."
             )
 
         if not self.drives.remotes:
-            warnings.append(
-                "No drive remotes configured. Add at least one remote under drives.remotes."
-            )
+            warnings.append("No drive remotes configured.")
 
         enabled = self.drives.enabled_by_priority()
         if not enabled:
-            warnings.append("No drives are enabled. Set enabled: true on at least one remote.")
-
-        secrets_file = Path(self.secrets.class_file)
-        if not secrets_file.exists():
-            warnings.append(
-                f"secrets_class.yaml not found at {self.secrets.class_file}. "
-                "Copy secrets_class.yaml.example and edit it."
-            )
+            warnings.append("No drives are enabled.")
 
         log_dir = Path(self.server.log_dir)
         if not log_dir.exists():

@@ -13,10 +13,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Generator, Optional
 
+from .paths import get_default_db_path, get_default_rclone_conf_path, get_resource_path
+
 log = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = os.environ.get("DB_PATH", r"C:\ProgramData\CloudBackup\state.db")
-SCHEMA_PATH = Path(__file__).parent / "schema.sql"
+def get_db_path(override_path: Optional[str] = None) -> str:
+    if override_path:
+        return str(override_path)
+    return str(get_default_db_path())
+
+DEFAULT_DB_PATH = os.environ.get("DB_PATH", str(get_default_db_path()))
+SCHEMA_PATH = get_resource_path("shared/schema.sql")
 
 
 

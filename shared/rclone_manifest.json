@@ -1,0 +1,8 @@
+{
+  "version": "v1.68.2",
+  "platform": "windows-amd64",
+  "expected_sha256": "dcbb5d188358df520b08a584df42a8e76161b30a90a62fefdd0001174d002122",
+  "bundled_binary_relative_path": "bin/rclone.exe",
+  "minimum_version": "1.60.0",
+  "maximum_tested_version": "1.68.9"
+}

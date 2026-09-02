@@ -38,8 +38,9 @@ STAGE 1: BOOTSTRAP RCLONE & OAUTH
    - Run interactive OAuth authorization in browser
 
 3. Re-create crypt remotes using passphrases from password manager:
-   - Name: gdrive1_crypt (type: crypt, remote: gdrive1:adc-backup-data)
-   - Name: gdrive1_secrets_crypt (type: crypt, remote: gdrive1:adc-backup-secrets)
+   - Name: gdrive1_crypt (type: crypt, remote: gdrive1:cloud-backup-data)
+   - Name: gdrive1_secrets_crypt (type: crypt, remote: gdrive1:cloud-backup-secrets)
+
 
 4. Verify remote access:
    rclone lsd gdrive1_crypt:

@@ -1,0 +1,157 @@
+name: CI/CD Pipeline — Windows Portability & Distribution Build
+
+on:
+  push:
+    branches: [ main, "feature/**" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-windows:
+    name: Unit Tests on Windows (windows-latest)
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Run Unit Test Suite
+        run: |
+          python -m pytest -v
+
+  package-installer-windows:
+    name: Build Executable & Installer (windows-latest)
+    needs: test-windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller pytest
+
+      - name: Scan Source Tree for Secret Patterns
+        run: |
+          python scripts/scan_secrets.py
+
+      - name: Stage & Hash-Verify Pinned rclone Windows x64
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path bin
+          $rcloneUrl = "https://downloads.rclone.org/v1.68.2/rclone-v1.68.2-windows-amd64.zip"
+          $zipPath = "bin\rclone.zip"
+          Invoke-WebRequest -Uri $rcloneUrl -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath bin\temp_extract
+          Copy-Item -Path "bin\temp_extract\rclone-v1.68.2-windows-amd64\rclone.exe" -Destination "bin\rclone.exe" -Force
+          Remove-Item -Recurse -Force bin\temp_extract, bin\rclone.zip
+
+          # Verify SHA-256 Hash against shared/rclone_manifest.json
+          $manifest = Get-Content shared\rclone_manifest.json | ConvertFrom-Json
+          $expectedHash = $manifest.expected_sha256.ToLower()
+          $actualHash = (Get-FileHash -Algorithm SHA256 bin\rclone.exe).Hash.ToLower()
+
+          Write-Host "Expected SHA-256: $expectedHash"
+          Write-Host "Actual SHA-256:   $actualHash"
+
+          if ($actualHash -ne $expectedHash) {
+              Write-Error "Fail-closed check failed: Downloaded rclone.exe hash mismatch!"
+              exit 1
+          }
+          Write-Host "rclone.exe SHA-256 hash verified successfully."
+
+      - name: Build PyInstaller Standalone Executable
+        run: |
+          pyinstaller --noconfirm CloudBackup.spec
+
+      - name: Frozen Executable Smoke Test
+        run: |
+          .\dist\CloudBackup\CloudBackup.exe --version
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup -y
+
+      - name: Compile Inno Setup Installer
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer/CloudBackupInstaller.iss
+
+      - name: Scan Built Artifacts for Secret Patterns
+        run: |
+          python scripts/scan_secrets.py --scan-artifacts
+
+      - name: Generate SHA-256 Checksum Manifest
+        shell: powershell
+        run: |
+          Compress-Archive -Path dist\CloudBackup\* -DestinationPath dist\CloudBackup-x64.zip
+          Get-FileHash -Algorithm SHA256 dist\CloudBackup-Setup.exe, dist\CloudBackup-x64.zip | Format-List | Out-File dist\checksums.sha256
+          Get-Content dist\checksums.sha256
+
+      - name: Upload Windows Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CloudBackup-Windows-x64-Release
+          path: |
+            dist/CloudBackup-Setup.exe
+            dist/CloudBackup-x64.zip
+            dist/checksums.sha256
+          if-no-files-found: error
+
+      - name: Draft Release on Version Tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            dist/CloudBackup-Setup.exe
+            dist/CloudBackup-x64.zip
+            dist/checksums.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  unit-tests-linux:
+    name: Platform-Neutral Unit Tests (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install -r requirements.txt pytest
+
+      - name: Run Platform-Neutral Unit Tests
+        run: |
+          python -m pytest -v tests/test_dedup.py tests/test_rotation.py tests/test_schema.py

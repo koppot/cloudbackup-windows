@@ -1,16 +1,9 @@
 """
-windows/web_server.py — Python HTTP Server for supermicro.local (Windows 10).
+windows/web_server.py — Local HTTP Server for CloudBackup for Windows.
 
-Exposes port 8081 over Tailscale only. Serves web_static/index.html providing exact 1:1
-reference interface layout and Google Drive options:
-  - Header: Encrypted Multi-Cloud Backup Controller
-  - System Active / Active Target Badges
-  - Quick Operational Controls (Run Backup, Dry Run, Pause, Setup Wizard, Verify, Restore Test, Refresh)
-  - Automatic Capacity Fill & Rotation Threshold Bar (Quick presets 1%, 5%, 10%, 90%, 95%, 98%)
-  - Cloud Target Remotes Table (Priority, Crypt Remote, Base Remote, Account Avatar/Email, Status, Capacity, Threshold, Toggle Switch, Re-auth, Test, Delete)
-  - Backup Sources & File Category Filters Table
-  - Snapshot Catalog History Table
-  - Live Execution Log & Console Box
+Binds to 127.0.0.1:8765 by default for local-only onboarding and management UI.
+Serves web_static/index.html providing dashboard overview, drive management, sources,
+run history, and onboarding controls.
 """
 
 from __future__ import annotations
@@ -19,13 +12,8 @@ import http.server
 import json
 import logging
 import os
-import re
-import subprocess
 import sys
-import threading
-import time
 import urllib.parse
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -33,81 +21,34 @@ from typing import Any, Dict, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared import database as db
+from shared.paths import (
+    get_config_dir,
+    get_default_db_path,
+    get_default_rclone_conf_path,
+    get_log_dir,
+    get_resource_path,
+    get_state_dir,
+    validate_local_path,
+)
 from . import auth
 from .engine import WindowsBackupEngine
 
 log = logging.getLogger(__name__)
 
-DB_PATH = os.environ.get("DB_PATH", r"C:\ProgramData\CloudBackup\state.db")
-SESSION_FILE = r"C:\ProgramData\CloudBackup\session.json"
+DB_PATH = str(get_default_db_path())
+SESSION_FILE = str(get_state_dir() / "session.json")
+AUTH_FILE = str(get_config_dir() / "auth.json")
+RCLONE_CONF = str(get_default_rclone_conf_path())
 
-AUTH_FILE = r"C:\ProgramData\CloudBackup\auth.json"
-RCLONE_CONF = os.environ.get("RCLONE_CONF", r"C:\ProgramData\CloudBackup\rclone.conf")
-RCLONE_BIN = os.environ.get("RCLONE_BIN", r"C:\ProgramFiles\rclone\rclone.exe")
+PORT = int(os.environ.get("FLASK_PORT", os.environ.get("PORT", "8765")))
 
-PORT = int(os.environ.get("FLASK_PORT", "8081"))
+# Enforce loopback-only host binding for Phase 1 security
+ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
+env_host = os.environ.get("HOST", "127.0.0.1")
+HOST = env_host if env_host in ALLOWED_HOSTS else "127.0.0.1"
 
-WEB_STATIC_DIR = Path(__file__).parent / "web_static"
-INDEX_HTML_PATH = WEB_STATIC_DIR / "index.html"
-
+INDEX_HTML_PATH = get_resource_path("windows/web_static/index.html")
 ENGINE = WindowsBackupEngine(db_path=DB_PATH)
-_account_info_cache: Dict[str, tuple[float, dict]] = {}
-
-
-def fetch_google_account_info(base_remote: str, rclone_conf: str = RCLONE_CONF) -> dict:
-    clean_base = base_remote.rstrip(":")
-    if not clean_base or not os.path.exists(rclone_conf):
-        return {}
-
-    if clean_base in _account_info_cache:
-        t_cached, cached_data = _account_info_cache[clean_base]
-        if time.time() - t_cached < 1800:
-            return cached_data
-
-    try:
-        import configparser
-        import urllib.request
-
-        cfg = configparser.ConfigParser()
-        cfg.read(rclone_conf)
-
-        if cfg.has_section(clean_base) and cfg.has_option(clean_base, "token"):
-            tok_raw = cfg.get(clean_base, "token")
-            tok = json.loads(tok_raw)
-            acc_token = tok.get("access_token")
-            if acc_token:
-                req = urllib.request.Request(
-                    "https://www.googleapis.com/drive/v3/about?fields=user,storageQuota",
-                    headers={"Authorization": f"Bearer {acc_token}"},
-                )
-                with urllib.request.urlopen(req, timeout=4) as resp:
-                    raw = json.loads(resp.read().decode())
-                    u_data = raw.get("user", {})
-                    q_data = raw.get("storageQuota", {})
-
-                    limit_bytes = int(q_data.get("limit", 5497558138880))
-                    usage_bytes = int(q_data.get("usage", 0))
-
-                    total_gb = round(limit_bytes / (1024 ** 3), 1)
-                    used_gb = round(usage_bytes / (1024 ** 3), 1)
-                    free_gb = max(0.0, round(total_gb - used_gb, 1))
-                    pct = round((used_gb / total_gb * 100), 1) if total_gb > 0 else 0.0
-
-                    info = {
-                        "email": u_data.get("emailAddress", ""),
-                        "displayName": u_data.get("displayName", clean_base),
-                        "photoLink": u_data.get("photoLink", ""),
-                        "total_gb": total_gb,
-                        "used_gb": used_gb,
-                        "free_gb": free_gb,
-                        "percent_used": pct,
-                    }
-                    _account_info_cache[clean_base] = (time.time(), info)
-                    return info
-    except Exception as exc:
-        log.error("Error fetching Google Drive account info for %s: %s", clean_base, exc)
-
-    return {}
 
 
 class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -133,7 +74,7 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def respond_json(self, data: dict, code: int = 200) -> None:
         self.send_response(code)
         self.send_header("Content-type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:8765")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode("utf-8"))
 
@@ -142,7 +83,7 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         path = parsed.path
 
         if path == "/login":
-            html = """<!DOCTYPE html><html><head><title>Login</title><style>body{background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;}card{background:#141414;padding:2rem;border-radius:12px;border:1px solid #262626;}input{padding:0.5rem;width:100%;margin-bottom:1rem;background:#000;color:#fff;border:1px solid #404040;}button{padding:0.5rem 1rem;background:#38bdf8;color:#000;font-weight:bold;border:none;border-radius:4px;width:100%;}</style></head><body><div class="card"><h2>supermicro Backup Login</h2><form method="POST" action="/login"><input type="password" name="password" placeholder="Password" required><button type="submit">Log In</button></form></div></body></html>"""
+            html = """<!DOCTYPE html><html><head><title>CloudBackup Login</title><style>body{background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;}.card{background:#141414;padding:2rem;border-radius:12px;border:1px solid #262626;width:320px;}input{padding:0.5rem;width:100%;box-sizing:border-box;margin-bottom:1rem;background:#000;color:#fff;border:1px solid #404040;border-radius:4px;}button{padding:0.5rem 1rem;background:#38bdf8;color:#000;font-weight:bold;border:none;border-radius:4px;width:100%;cursor:pointer;}</style></head><body><div class="card"><h2>CloudBackup Login</h2><form method="POST" action="/login"><input type="password" name="password" placeholder="Password" required><button type="submit">Log In</button></form></div></body></html>"""
             return self.respond_html(html)
 
         if not self.is_auth():
@@ -177,17 +118,15 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             remotes = db.get_remotes(DB_PATH)
             out = []
             for idx, r in enumerate(remotes):
-                info = fetch_google_account_info(r["base_remote"])
                 item = dict(r)
-                used = info.get("used_gb") or r.get("capacity_used_gb") or 0.0
-                total = info.get("total_gb") or r.get("capacity_total_gb") or 5120.0
+                used = r.get("capacity_used_gb") or 0.0
+                total = r.get("capacity_total_gb") or 5120.0
                 pct = round((used / total * 100), 1) if total > 0 else 0.0
                 free = round(max(0.0, total - used), 1)
 
                 item["is_active"] = (idx == 0)
-                item["account_name"] = info.get("displayName") or r.get("account_display_name") or r["name"]
-                item["account_email"] = info.get("email") or r.get("authorized_email") or ""
-                item["account_photo"] = info.get("photoLink") or r.get("account_photo_url") or ""
+                item["account_name"] = r.get("account_display_name") or r["name"]
+                item["account_email"] = r.get("authorized_email") or ""
                 item["capacity"] = {
                     "total_gb": total,
                     "used_gb": used,
@@ -206,7 +145,7 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             return self.respond_json({"runs": runs})
 
         elif path == "/api/logs":
-            log_dir = Path(r"C:\ProgramData\adc-backup\logs")
+            log_dir = get_log_dir()
             logs = []
             if log_dir.exists():
                 log_files = sorted(log_dir.glob("**/*.log"), key=os.path.getmtime, reverse=True)
@@ -260,7 +199,6 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             run_id = ENGINE.run_job(1, triggered_by="windows_ui", dry_run=dry_run, dual_account=dual_account)
             return self.respond_json({"ok": True, "run_id": run_id, "dual_account": dual_account})
 
-
         elif self.path == "/api/action/pause":
             ENGINE.pause()
             return self.respond_json({"ok": True, "system_state": "PAUSED"})
@@ -281,75 +219,29 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             result = ENGINE.setup_wizard()
             return self.respond_json(result)
 
-        elif self.path == "/api/drives/reauthorize":
-            name = body.get("name", "")
-            remotes = db.get_remotes(DB_PATH)
-            matching = [r for r in remotes if r["name"] == name or r["base_remote"].rstrip(":") == name]
-            rid = matching[0]["id"] if matching else (remotes[0]["id"] if remotes else 1)
-            result = ENGINE.reauthorize_remote(rid)
-            return self.respond_json(result)
-
-        elif self.path == "/api/drives/test":
-            name = body.get("name", "")
-            remotes = db.get_remotes(DB_PATH)
-            matching = [r for r in remotes if r["name"] == name or r["base_remote"].rstrip(":") == name]
-            rid = matching[0]["id"] if matching else (remotes[0]["id"] if remotes else 1)
-            res = ENGINE.test_remote(rid)
-            return self.respond_json({"success": res.get("ok", False), "message": res.get("message", "")})
-
-        elif self.path == "/api/drives/threshold":
-            name = body.get("name", "")
-            thresh = float(body.get("fill_threshold_percent", 95.0))
-            if name == "ALL":
-                remotes = db.get_remotes(DB_PATH)
-                for r in remotes:
-                    db.update_remote(r["id"], {"fill_threshold_percent": thresh}, db_path=DB_PATH)
-            else:
-                remotes = db.get_remotes(DB_PATH)
-                matching = [r for r in remotes if r["name"] == name or r["base_remote"].rstrip(":") == name]
-                if matching:
-                    db.update_remote(matching[0]["id"], {"fill_threshold_percent": thresh}, db_path=DB_PATH)
-            return self.respond_json({"ok": True, "fill_threshold_percent": thresh})
-
-        elif self.path == "/api/drives/toggle":
-            name = body.get("name", "")
-            enabled = 1 if body.get("enabled", True) else 0
-            remotes = db.get_remotes(DB_PATH)
-            matching = [r for r in remotes if r["name"] == name or r["base_remote"].rstrip(":") == name]
-            if matching:
-                db.update_remote(matching[0]["id"], {"enabled": enabled}, db_path=DB_PATH)
-            return self.respond_json({"ok": True})
-
-        elif self.path == "/api/drives/reorder":
-            order = body.get("order", [])
-            remotes = db.get_remotes(DB_PATH)
-            id_map = {r["name"]: r["id"] for r in remotes}
-            ordered_ids = [id_map[n] for n in order if n in id_map]
-            db.reorder_remotes(ordered_ids, db_path=DB_PATH)
-            return self.respond_json({"ok": True})
-
-        elif self.path in ("/api/drives/remove", "/api/drives/delete"):
-            name = body.get("name", "")
-            remotes = db.get_remotes(DB_PATH)
-            matching = [r for r in remotes if r["name"] == name or r["base_remote"].rstrip(":") == name]
-            if matching:
-                res = ENGINE.delete_remote(matching[0]["id"])
-                return self.respond_json(res)
-            return self.respond_json({"ok": True})
-
         elif self.path == "/api/sources/add":
             name = body.get("name", "").strip()
-            path = body.get("path", "").strip()
+            raw_path = body.get("path", "").strip()
             category = body.get("category", "storage_media").strip()
-            if name and path:
-                db.add_source({
-                    "host": "supermicro.local",
-                    "name": name,
-                    "path": path,
-                    "data_class": category,
-                    "enabled": 1,
-                }, DB_PATH)
-            return self.respond_json({"ok": True})
+            if name and raw_path:
+                try:
+                    # Validate path: must exist, be a directory, and be accessible
+                    valid_path_obj = validate_local_path(raw_path, must_exist=True)
+                    if not valid_path_obj.is_dir():
+                        return self.respond_json({"error": f"Source path '{raw_path}' is a file, not a directory."}, 400)
+
+                    valid_path = str(valid_path_obj)
+                    db.add_source({
+                        "host": "supermicro.local",
+                        "name": name,
+                        "path": valid_path,
+                        "data_class": category,
+                        "enabled": 1,
+                    }, DB_PATH)
+                    return self.respond_json({"ok": True, "path": valid_path})
+                except Exception as ve:
+                    return self.respond_json({"error": f"Invalid source directory: {ve}"}, 400)
+            return self.respond_json({"error": "Missing name or path"}, 400)
 
         elif self.path == "/api/sources/remove":
             name = body.get("name", "").strip()
@@ -360,11 +252,13 @@ class BackupHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.respond_json({"error": "Not Found"}, 404)
 
 
-def run_windows_server() -> None:
+def run_windows_server(host: str = HOST, port: int = PORT) -> None:
+    if host not in ALLOWED_HOSTS:
+        raise ValueError(f"Security error: Invalid bind host '{host}'. Phase 1 server is restricted to loopback (127.0.0.1).")
     db.init_db(DB_PATH)
-    server_address = ("0.0.0.0", PORT)
+    server_address = (host, port)
     httpd = http.server.HTTPServer(server_address, BackupHTTPRequestHandler)
-    log.info("Starting supermicro.local backup server on port %d", PORT)
+    log.info("Starting CloudBackup server on http://%s:%d", host, port)
     httpd.serve_forever()
 
 

@@ -140,10 +140,14 @@ class ValidationStatus(str, enum.Enum):
 # ─── Descriptor & Identity Helpers ────────────────────────────────────────────
 
 def get_open_flags() -> int:
-    """Returns required read-only open flags; fails closed if O_NOFOLLOW is missing."""
-    if not hasattr(os, "O_NOFOLLOW"):
+    """Returns required read-only open flags; fails closed on POSIX if O_NOFOLLOW is missing."""
+    if os.name != "nt" and not hasattr(os, "O_NOFOLLOW"):
         raise ValueError(PATH_SYMLINK_REJECTED)
-    flags = os.O_RDONLY | os.O_NOFOLLOW
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
     if hasattr(os, "O_CLOEXEC"):
         flags |= os.O_CLOEXEC
     return flags

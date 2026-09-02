@@ -53,7 +53,10 @@ class TestValidationSubsystem(unittest.TestCase):
         self.excluded_roots = [PurePosixPath("/mnt"), PurePosixPath("/media"), PurePosixPath("/data/storage")]
 
     def tearDown(self) -> None:
-        self.temp_dir.cleanup()
+        try:
+            self.temp_dir.cleanup()
+        except Exception:
+            pass
 
     # 1. Manifest containing /mnt/, /media/, or /data/storage/ returns BLOCKED
     def test_1_manifest_with_excluded_path_blocked(self) -> None:
@@ -469,6 +472,7 @@ class TestValidationSubsystem(unittest.TestCase):
         self.assertEqual(dr["overall_go_no_go"], "GO")
 
     # 38. Simulate unavailable O_NOFOLLOW fails closed with PATH_SYMLINK_REJECTED
+    @unittest.skipIf(os.name == "nt", "O_NOFOLLOW check is POSIX-specific")
     def test_38_onofollow_unavailable_fails_closed(self) -> None:
         mf = self.evidence_root / "valid_manifest.txt"
         mf.write_text("/etc/ssl/certs\n/opt/adc-backup/config\n", encoding="utf-8")
