@@ -5,196 +5,355 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CloudBackup</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#0a0a0a;color:#f5f5f5;font-family:system-ui,-apple-system,sans-serif}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* HEADER */
-header{
-  display:flex;align-items:center;gap:10px;
-  padding:14px 24px;background:#0d0d0d;
-  border-bottom:1px solid #1a1a1a;
-}
-header h1{font-size:1rem;font-weight:700;flex:1;letter-spacing:-.01em}
-#dot{width:9px;height:9px;border-radius:50%;background:#3f3f46;flex-shrink:0;transition:background .4s}
-#dot.ok{background:#22c55e}#dot.busy{background:#f59e0b;animation:p 1s infinite}#dot.err{background:#ef4444}
-@keyframes p{0%,100%{opacity:1}50%{opacity:.35}}
-
-/* GRID */
-.grid{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  grid-template-rows:auto auto;
-  gap:14px;padding:20px 24px;
-  height:calc(100vh - 52px);
+html, body {
+  height: 100%;
+  background: #0a0a0a;
+  color: #f5f5f5;
+  font-family: system-ui, -apple-system, sans-serif;
+  overflow: hidden;
 }
 
-/* CARD */
-.card{
-  background:#141414;border:1px solid #222;border-radius:14px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:18px;padding:32px 20px;overflow:hidden;
+/* ── HEADER ── */
+header {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 22px;
+  background: #0d0d0d;
+  border-bottom: 1px solid #1a1a1a;
 }
-.card.log{
-  grid-column:1/-1;
-  flex-direction:column;align-items:flex-start;justify-content:flex-start;
-  padding:16px 20px;gap:10px;
-  min-height:0;
+header span {
+  font-size: 1rem;
+  font-weight: 700;
+  flex: 1;
+  letter-spacing: -.01em;
+}
+#dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: #3f3f46;
+  flex-shrink: 0;
+  transition: background .4s;
+}
+#dot.ok  { background: #22c55e; }
+#dot.busy{ background: #f59e0b; animation: pulse 1s infinite; }
+#dot.err { background: #ef4444; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── MAIN GRID ── */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 3fr 1fr;
+  gap: 14px;
+  padding: 18px 22px;
+  height: calc(100vh - 50px);
 }
 
-/* BACKUP CARD */
-#btn-run{
-  width:96px;height:96px;border-radius:50%;
-  border:2.5px solid #38bdf8;background:transparent;
-  cursor:pointer;display:flex;align-items:center;justify-content:center;
-  flex-shrink:0;transition:background .2s,border-color .2s;
-}
-#btn-run:hover{background:rgba(56,189,248,.1)}
-#btn-run.running{border-color:#f59e0b}
-#btn-run.running svg{fill:#f59e0b}
-#btn-run svg{width:38px;height:38px;fill:#38bdf8;transform:translateX(3px)}
-
-.meta{display:flex;flex-direction:column;align-items:center;gap:7px}
-.meta-row{display:flex;align-items:center;gap:6px;font-size:.75rem;color:#525252}
-.meta-row svg{flex-shrink:0;opacity:.7}
-.meta-val{color:#737373}
-
-.btn-row{display:flex;gap:8px}
-.btn-sm{
-  padding:5px 13px;border-radius:8px;
-  border:1px solid #333;background:transparent;
-  color:#737373;font-size:.73rem;cursor:pointer;
-  transition:border-color .2s,color .2s;
-}
-.btn-sm:hover:not(:disabled){border-color:#38bdf8;color:#38bdf8}
-.btn-sm:disabled{opacity:.35;cursor:default}
-
-/* DRIVE CARD */
-.drive-icon{width:64px;height:56px;flex-shrink:0}
-.storage-wrap{width:110px;height:4px;background:#222;border-radius:3px;overflow:hidden}
-.storage-fill{height:100%;background:#38bdf8;border-radius:3px;transition:width .6s}
-.storage-lbl{font-size:.7rem;color:#525252;margin-top:-6px}
-
-/* FOLDERS CARD */
-.folders-icon{flex-shrink:0}
-.chip-list{display:flex;flex-direction:column;gap:6px;width:100%;max-height:110px;overflow-y:auto}
-.chip{
-  display:flex;align-items:center;justify-content:space-between;
-  background:#1a1a1a;border-radius:8px;padding:6px 10px;gap:8px;
-}
-.chip span{font-size:.7rem;color:#737373;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
-.chip button{background:none;border:none;color:#3f3f46;cursor:pointer;font-size:.8rem;flex-shrink:0;line-height:1}
-.chip button:hover{color:#ef4444}
-.chip-empty{font-size:.73rem;color:#3f3f46}
-
-/* ADD BUTTON */
-.btn-add{
-  width:38px;height:38px;border-radius:50%;
-  border:1.5px solid #333;background:transparent;
-  cursor:pointer;color:#525252;font-size:1.15rem;
-  display:flex;align-items:center;justify-content:center;
-  transition:border-color .2s,color .2s;flex-shrink:0;
-}
-.btn-add:hover{border-color:#38bdf8;color:#38bdf8}
-
-/* LOG */
-.log-hdr{display:flex;align-items:center;gap:6px;font-size:.72rem;color:#3f3f46;font-family:monospace}
-#log-box{
-  width:100%;flex:1;overflow-y:auto;
-  font-family:'Courier New',monospace;font-size:.68rem;
-  line-height:1.65;color:#3f3f46;
-}
-#log-box p{margin:0}
-#log-box p.info{color:#525252}
-#log-box p.ok{color:#16a34a}
-#log-box p.warn{color:#d97706}
-#log-box p.err{color:#dc2626}
-
-/* MODALS */
-.overlay{
-  display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.72);z-index:50;
-  align-items:center;justify-content:center;
-}
-.overlay.open{display:flex}
-.modal{
-  background:#161616;border:1px solid #2a2a2a;border-radius:16px;
-  padding:28px 24px;width:360px;display:flex;flex-direction:column;gap:16px;
-}
-.modal h2{font-size:.9rem;font-weight:600;color:#e5e5e5}
-.modal p{font-size:.75rem;color:#525252;line-height:1.5}
-.modal input{
-  background:#0a0a0a;border:1px solid #333;border-radius:8px;
-  padding:9px 12px;color:#f5f5f5;font-size:.8rem;width:100%;outline:none;
-}
-.modal input:focus{border-color:#38bdf8}
-.modal-btns{display:flex;gap:8px;justify-content:flex-end}
-.btn-primary{
-  padding:7px 18px;border-radius:8px;border:none;
-  background:#38bdf8;color:#000;font-size:.8rem;font-weight:600;cursor:pointer;
-}
-.btn-cancel{
-  padding:7px 18px;border-radius:8px;
-  border:1px solid #333;background:transparent;
-  color:#737373;font-size:.8rem;cursor:pointer;
+/* ── CARD BASE ── */
+.card {
+  background: #141414;
+  border: 1px solid #1e1e1e;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  overflow: hidden;
+  min-height: 0;
 }
 
-/* TOAST */
-#toast{
-  position:fixed;bottom:20px;right:20px;
-  background:#1a1a1a;border:1px solid #333;border-radius:10px;
-  padding:9px 16px;font-size:.75rem;color:#a3a3a3;
-  opacity:0;pointer-events:none;transition:opacity .25s;z-index:99;
+/* LOG CARD overrides */
+.card.log {
+  grid-column: 1 / -1;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 14px 18px;
 }
-#toast.show{opacity:1}
+
+/* ── BACKUP CARD ── */
+#btn-run {
+  width: 90px; height: 90px;
+  border-radius: 50%;
+  border: 2.5px solid #38bdf8;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background .2s;
+}
+#btn-run:hover { background: rgba(56,189,248,.1); }
+#btn-run.running { border-color: #f59e0b; }
+#btn-run.running .play-tri { fill: #f59e0b; }
+.play-tri { fill: #38bdf8; transform: translateX(3px); }
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: .75rem;
+  color: #525252;
+}
+.meta-val { color: #737373; }
+
+.action-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-sm {
+  padding: 5px 14px;
+  border-radius: 8px;
+  border: 1px solid #2a2a2a;
+  background: transparent;
+  color: #525252;
+  font-size: .73rem;
+  cursor: pointer;
+  transition: border-color .2s, color .2s;
+}
+.btn-sm:hover:not(:disabled) { border-color: #38bdf8; color: #38bdf8; }
+.btn-sm:disabled { opacity: .3; cursor: default; }
+
+/* ── DRIVE CARD ── */
+.drive-logo { flex-shrink: 0; }
+
+.bar-wrap {
+  width: 120px;
+  height: 4px;
+  background: #222;
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.bar-fill {
+  height: 100%;
+  background: #38bdf8;
+  border-radius: 3px;
+  transition: width .6s;
+}
+.lbl {
+  font-size: .7rem;
+  color: #525252;
+  text-align: center;
+  margin-top: -8px;
+}
+
+/* ── ADD BUTTON ── */
+.btn-add {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  border: 1.5px solid #2a2a2a;
+  background: transparent;
+  color: #525252;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color .2s, color .2s;
+  line-height: 1;
+}
+.btn-add:hover { border-color: #38bdf8; color: #38bdf8; }
+
+/* ── FOLDERS CARD ── */
+.chip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: calc(100% - 32px);
+  max-height: 100px;
+  overflow-y: auto;
+  align-items: stretch;
+}
+.chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  background: #1a1a1a;
+  border-radius: 7px;
+  padding: 5px 9px;
+}
+.chip span {
+  font-size: .68rem;
+  color: #737373;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chip button {
+  background: none; border: none;
+  color: #3f3f46; cursor: pointer;
+  font-size: .78rem; flex-shrink: 0;
+  line-height: 1;
+}
+.chip button:hover { color: #ef4444; }
+.chip-empty { font-size: .72rem; color: #3f3f46; text-align: center; }
+
+/* ── LOG CARD ── */
+.log-hdr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .72rem;
+  color: #3f3f46;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+#log-box {
+  width: 100%;
+  flex: 1;
+  overflow-y: auto;
+  font-family: 'Courier New', monospace;
+  font-size: .67rem;
+  line-height: 1.7;
+  color: #3f3f46;
+  min-height: 0;
+}
+#log-box p { margin: 0; }
+#log-box p.info { color: #525252; }
+#log-box p.ok   { color: #15803d; }
+#log-box p.warn { color: #d97706; }
+#log-box p.err  { color: #dc2626; }
+
+/* ── MODALS ── */
+.overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.75);
+  z-index: 50;
+  align-items: center;
+  justify-content: center;
+}
+.overlay.open { display: flex; }
+.modal {
+  background: #161616;
+  border: 1px solid #2a2a2a;
+  border-radius: 16px;
+  padding: 26px 22px;
+  width: 350px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.modal h2 { font-size: .88rem; font-weight: 600; }
+.modal p  { font-size: .73rem; color: #525252; line-height: 1.5; }
+.modal input {
+  background: #0a0a0a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #f5f5f5;
+  font-size: .8rem;
+  width: 100%;
+  outline: none;
+}
+.modal input:focus { border-color: #38bdf8; }
+.modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.btn-primary {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: none;
+  background: #38bdf8;
+  color: #000;
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-cancel {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: 1px solid #2a2a2a;
+  background: transparent;
+  color: #737373;
+  font-size: .78rem;
+  cursor: pointer;
+}
+
+/* ── TOAST ── */
+#toast {
+  position: fixed;
+  bottom: 18px; right: 18px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  padding: 8px 15px;
+  font-size: .73rem;
+  color: #a3a3a3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s;
+  z-index: 99;
+}
+#toast.show { opacity: 1; }
 
 /* scrollbar */
-::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:4px}
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
 </style>
 </head>
 <body>
 
 <header>
-  <!-- Cloud icon -->
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
   </svg>
-  <h1>CloudBackup</h1>
+  <span>CloudBackup</span>
   <div id="dot"></div>
 </header>
 
 <div class="grid">
 
-  <!-- ── Backup card ── -->
+  <!-- ═══ BACKUP CARD ═══ -->
   <div class="card">
-    <button id="btn-run" onclick="runBackup()" title="Run backup">
-      <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+    <button id="btn-run" onclick="runBackup()" title="Run backup now">
+      <svg width="36" height="36" viewBox="0 0 24 24">
+        <polygon class="play-tri" points="6,3 20,12 6,21"/>
+      </svg>
     </button>
 
     <div class="meta">
       <div class="meta-row">
-        <!-- clock -->
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
         <span class="meta-val" id="last-run">—</span>
       </div>
       <div class="meta-row">
-        <!-- calendar -->
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
         <span class="meta-val" id="next-run">—</span>
       </div>
     </div>
 
-    <div class="btn-row">
+    <div class="action-row">
       <button class="btn-sm" id="btn-pause" onclick="pauseBackup()" disabled>⏸</button>
       <button class="btn-sm" onclick="verifyBackup()">✓ Verify</button>
     </div>
   </div>
 
-  <!-- ── Drive card ── -->
+  <!-- ═══ DRIVE CARD ═══ -->
   <div class="card">
-    <!-- Google Drive SVG logo -->
-    <svg class="drive-icon" id="drive-svg" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+    <!-- Official Google Drive triangle logo -->
+    <svg class="drive-logo" width="72" height="62" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
       <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
       <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
       <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
@@ -203,33 +362,41 @@ header h1{font-size:1rem;font-weight:700;flex:1;letter-spacing:-.01em}
       <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
     </svg>
 
-    <div class="storage-wrap">
-      <div class="storage-fill" id="storage-fill" style="width:0%"></div>
+    <div class="bar-wrap">
+      <div class="bar-fill" id="storage-fill" style="width:0%"></div>
     </div>
-    <div class="storage-lbl" id="storage-lbl">No drive connected</div>
-    <button class="btn-add" id="btn-add-drive" onclick="openDriveModal()" title="Add Google Drive">＋</button>
+    <div class="lbl" id="storage-lbl">No drive connected</div>
+    <button class="btn-add" id="btn-add-drive" onclick="openDriveModal()" title="Add Google Drive">+</button>
   </div>
 
-  <!-- ── Folders card ── -->
+  <!-- ═══ FOLDERS CARD ═══ -->
   <div class="card">
-    <!-- Stacked folders SVG -->
-    <svg class="folders-icon" width="64" height="54" viewBox="0 0 64 54" fill="none">
-      <rect x="4" y="16" width="56" height="34" rx="5" fill="#1e3a5f" stroke="#2563eb" stroke-width="1.5"/>
-      <rect x="0" y="10" width="52" height="34" rx="5" fill="#1d4ed8" stroke="#3b82f6" stroke-width="1.5"/>
-      <path d="M0 18 Q0 10 8 10 h14 l4 4 h26 Q52 14 52 18" fill="#2563eb"/>
+    <!-- Stacked folders: 3 overlapping folder shapes offset diagonally -->
+    <svg width="80" height="66" viewBox="0 0 80 66" fill="none">
+      <!-- back folder (darkest, top-right offset) -->
+      <rect x="22" y="20" width="52" height="38" rx="5" fill="#1e3a5f"/>
+      <path d="M22 28 Q22 20 28 20 L41 20 L46 26 L74 26 Q74 20 74 28 Z" fill="#1e3a5f"/>
+      <!-- middle folder -->
+      <rect x="11" y="13" width="52" height="38" rx="5" fill="#1d4ed8"/>
+      <path d="M11 21 Q11 13 17 13 L30 13 L35 19 L63 19 Q63 13 63 21 Z" fill="#2563eb"/>
+      <!-- front folder (brightest) -->
+      <rect x="0" y="6" width="52" height="38" rx="5" fill="#2563eb"/>
+      <path d="M0 14 Q0 6 6 6 L19 6 L24 12 L52 12 Q52 6 52 14 Z" fill="#3b82f6"/>
     </svg>
 
     <div class="chip-list" id="folder-list">
       <span class="chip-empty">No folders added</span>
     </div>
-    <button class="btn-add" onclick="openFolderModal()" title="Add folder">＋</button>
+    <button class="btn-add" onclick="openFolderModal()" title="Add folder">+</button>
   </div>
 
-  <!-- ── Log card ── -->
+  <!-- ═══ LOG CARD ═══ -->
   <div class="card log">
     <div class="log-hdr">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 9 12 12 9 15"/><line x1="15" y1="12" x2="15.01" y2="12"/>
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <polyline points="9 9 12 12 9 15"/>
+        <line x1="15" y1="12" x2="15.01" y2="12"/>
       </svg>
       Log
     </div>
@@ -265,102 +432,124 @@ header h1{font-size:1rem;font-weight:700;flex:1;letter-spacing:-.01em}
 <div id="toast"></div>
 
 <script>
-/* utils */
-function toast(msg,ms=2600){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),ms)}
-async function api(url,o={}){try{const r=await fetch(url,o);return await r.json()}catch{return{}}}
-function fmt(s){if(!s||s==='—')return'—';try{return new Date(s).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}catch{return s}}
+const $ = id => document.getElementById(id);
 
-/* status */
-async function loadStatus(){
-  const d=await api('/api/status');
-  const dot=document.getElementById('dot');
-  if(!d||d.error){dot.className='err';return}
-  dot.className=d.running?'busy':d.configured?'ok':'';
-  const run=document.getElementById('btn-run');
-  const pause=document.getElementById('btn-pause');
-  if(d.running){run.classList.add('running');run.title='Running…';pause.disabled=false}
-  else{run.classList.remove('running');run.title='Run backup';pause.disabled=true}
-  if(d.last_run)document.getElementById('last-run').textContent=fmt(d.last_run);
-  if(d.next_run)document.getElementById('next-run').textContent=fmt(d.next_run);
-  if(d.logs?.length)renderLogs(d.logs);
+function toast(msg, ms=2600) {
+  const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'), ms);
+}
+async function api(url, o={}) {
+  try { const r=await fetch(url,o); return r.json(); } catch { return {}; }
+}
+function fmt(s) {
+  if(!s||s==='—') return '—';
+  try { return new Date(s).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+  catch { return s; }
 }
 
-/* logs */
-function renderLogs(lines){
-  const b=document.getElementById('log-box');
-  b.innerHTML='';
+/* status */
+async function loadStatus() {
+  const d = await api('/api/status');
+  const dot=$('dot'), run=$('btn-run'), pause=$('btn-pause');
+  if(!d||d.error){ dot.className='err'; return; }
+  dot.className = d.running ? 'busy' : d.configured ? 'ok' : '';
+  if(d.running){ run.classList.add('running'); pause.disabled=false; }
+  else { run.classList.remove('running'); pause.disabled=true; }
+  if(d.last_run) $('last-run').textContent=fmt(d.last_run);
+  if(d.next_run) $('next-run').textContent=fmt(d.next_run);
+  if(d.logs?.length) renderLogs(d.logs);
+}
+
+function renderLogs(lines) {
+  const b=$('log-box'); b.innerHTML='';
   lines.slice(-60).forEach(l=>{
-    const p=document.createElement('p');
-    p.textContent=l;
-    p.className=/error|fail/i.test(l)?'err':/warn/i.test(l)?'warn':/success|complet|done|ok/i.test(l)?'ok':'info';
+    const p=document.createElement('p'); p.textContent=l;
+    p.className=/error|fail/i.test(l)?'err':/warn/i.test(l)?'warn':/success|complet|done/i.test(l)?'ok':'info';
     b.appendChild(p);
   });
   b.scrollTop=b.scrollHeight;
 }
 
 /* drives */
-async function loadDrives(){
+async function loadDrives() {
   const d=await api('/api/drives');
   const remotes=d.remotes||[];
-  const fill=document.getElementById('storage-fill');
-  const lbl=document.getElementById('storage-lbl');
-  const btn=document.getElementById('btn-add-drive');
-  if(remotes.length){
+  const fill=$('storage-fill'), lbl=$('storage-lbl'), btn=$('btn-add-drive');
+  if(remotes.length) {
     const r=remotes[0];
     fill.style.width=Math.min(r.usage_pct||0,100)+'%';
     lbl.textContent=r.name||'Connected';
-    btn.style.display='none';
-  }else{
+    btn.style.visibility='hidden';
+  } else {
     fill.style.width='0%';
     lbl.textContent='No drive connected';
-    btn.style.display='flex';
+    btn.style.visibility='visible';
   }
 }
 
 /* sources */
-async function loadSources(){
+async function loadSources() {
   const d=await api('/api/sources');
   const sources=d.sources||[];
-  const list=document.getElementById('folder-list');
-  if(!sources.length){list.innerHTML='<span class="chip-empty">No folders added</span>';return}
-  list.innerHTML=sources.map(s=>`<div class="chip"><span title="${s.path}">${s.path}</span><button onclick="removeSource('${s.path.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">✕</button></div>`).join('');
+  const list=$('folder-list');
+  if(!sources.length){ list.innerHTML='<span class="chip-empty">No folders added</span>'; return; }
+  list.innerHTML=sources.map(s=>`<div class="chip"><span title="${s.path}">${s.path}</span><button onclick="removeSource(this,'${s.path.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">✕</button></div>`).join('');
 }
-async function removeSource(p){const fd=new FormData();fd.append('path',p);await api('/api/sources/remove',{method:'POST',body:fd});loadSources()}
+async function removeSource(el, path) {
+  const fd=new FormData(); fd.append('path',path);
+  await api('/api/sources/remove',{method:'POST',body:fd});
+  loadSources();
+}
 
 /* actions */
-async function runBackup(){const r=await api('/api/action/run',{method:'POST'});r.error?toast('⚠ '+r.error):(toast('▶ Backup started'),loadStatus())}
-async function pauseBackup(){await api('/api/action/pause',{method:'POST'});toast('⏸ Paused');loadStatus()}
-async function verifyBackup(){toast('🔍 Verifying…',6000);const r=await api('/api/action/verify',{method:'POST'});toast(r.ok?'✓ Verified OK':'⚠ Verify failed')}
+async function runBackup() {
+  const r=await api('/api/action/run',{method:'POST'});
+  r.error ? toast('⚠ '+r.error) : (toast('▶ Backup started'), loadStatus());
+}
+async function pauseBackup() {
+  await api('/api/action/pause',{method:'POST'}); toast('⏸ Paused'); loadStatus();
+}
+async function verifyBackup() {
+  toast('Verifying…',6000);
+  const r=await api('/api/action/verify',{method:'POST'});
+  toast(r.ok?'✓ Verified OK':'⚠ Verify failed');
+}
 
 /* drive modal */
-function openDriveModal(){document.getElementById('drive-modal').classList.add('open')}
-function closeDriveModal(){document.getElementById('drive-modal').classList.remove('open')}
-async function startOAuth(){
-  closeDriveModal();toast('🔗 Opening Google sign-in…',6000);
+function openDriveModal(){ $('drive-modal').classList.add('open'); }
+function closeDriveModal(){ $('drive-modal').classList.remove('open'); }
+async function startOAuth() {
+  closeDriveModal(); toast('Opening Google sign-in…',6000);
   const r=await api('/api/drives/wizard',{method:'POST'});
-  if(r.error){toast('⚠ '+r.error,6000);return}
-  if(r.auth_url)window.open(r.auth_url,'_blank');
-  setTimeout(()=>{loadDrives();loadStatus()},12000);
+  if(r.error){ toast('⚠ '+r.error,6000); return; }
+  if(r.auth_url) window.open(r.auth_url,'_blank');
+  setTimeout(()=>{ loadDrives(); loadStatus(); }, 12000);
 }
 
 /* folder modal */
-function openFolderModal(){document.getElementById('folder-modal').classList.add('open');document.getElementById('folder-input').value='';setTimeout(()=>document.getElementById('folder-input').focus(),80)}
-function closeFolderModal(){document.getElementById('folder-modal').classList.remove('open')}
-async function addFolder(){
-  const p=document.getElementById('folder-input').value.trim();if(!p)return;
-  const fd=new FormData();fd.append('path',p);
+function openFolderModal() {
+  $('folder-modal').classList.add('open');
+  $('folder-input').value='';
+  setTimeout(()=>$('folder-input').focus(), 80);
+}
+function closeFolderModal(){ $('folder-modal').classList.remove('open'); }
+async function addFolder() {
+  const p=$('folder-input').value.trim(); if(!p) return;
+  const fd=new FormData(); fd.append('path',p);
   const r=await api('/api/sources/add',{method:'POST',body:fd});
-  r.error?toast('⚠ '+r.error):(toast('📁 Folder added'),loadSources());
+  r.error ? toast('⚠ '+r.error) : (toast('Folder added'), loadSources());
   closeFolderModal();
 }
-document.getElementById('folder-input').addEventListener('keydown',e=>{if(e.key==='Enter')addFolder()});
+$('folder-input').addEventListener('keydown', e=>{ if(e.key==='Enter') addFolder(); });
 
-/* close on backdrop */
-['drive-modal','folder-modal'].forEach(id=>document.getElementById(id).addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')}));
+/* close on backdrop click */
+['drive-modal','folder-modal'].forEach(id=>{
+  $(id).addEventListener('click', function(e){ if(e.target===this) this.classList.remove('open'); });
+});
 
 /* boot */
-function refresh(){loadStatus();loadDrives();loadSources()}
-refresh();setInterval(refresh,5000);
+function refresh(){ loadStatus(); loadDrives(); loadSources(); }
+refresh(); setInterval(refresh, 5000);
 </script>
 </body>
 </html>
