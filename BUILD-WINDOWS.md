@@ -1,6 +1,6 @@
 # CloudBackup for Windows — Build & Packaging Guide
 
-This document describes how maintainers build the standalone PyInstaller executable and Inno Setup installer.
+This document describes how maintainers build the standalone PyInstaller executable, Inno Setup installer, and execute supplementary platform-neutral Docker regression tests.
 
 ---
 
@@ -30,7 +30,7 @@ This produces `dist/CloudBackup/CloudBackup.exe` containing all bundled static a
 ```cmd
 .\dist\CloudBackup\CloudBackup.exe --version
 ```
-Expected output: `CloudBackup for Windows v1.0.0 (x64)`
+Expected output: `CloudBackup for Windows v1.0.0-phase1 (x64 Phase 1 Development Preview)`
 
 ### 4. Build Inno Setup Installer
 ```cmd
@@ -38,7 +38,16 @@ iscc installer/CloudBackupInstaller.iss
 ```
 This generates `dist/CloudBackup-Setup.exe`.
 
-### 5. Generate SHA-256 Checksums
-```powershell
-Get-FileHash -Algorithm SHA256 dist\CloudBackup-Setup.exe | Format-List
+---
+
+## Supplementary Platform-Neutral Docker Testing
+
+> [!NOTE]
+> **LABEL: SUPPLEMENTARY PLATFORM-NEUTRAL VALIDATION ONLY**
+> Docker validation runs hermetic platform-neutral tests and repository secret scanning on Linux. It does **NOT** validate Windows installer compilation, UAC elevation, `ProgramData` ACLs, Task Scheduler, or Windows security controls.
+
+### Run Hermetic Docker Test Target
+```bash
+docker build -f Dockerfile.test -t cloudbackup-test .
+docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:exec,mode=1777 cloudbackup-test
 ```

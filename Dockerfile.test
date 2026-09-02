@@ -1,0 +1,29 @@
+# Dockerfile.test — Hermetic Platform-Neutral Test Target for CloudBackup
+# Label: SUPPLEMENTARY PLATFORM-NEUTRAL VALIDATION ONLY
+# (Does NOT validate Windows installer, UAC elevation, ProgramData ACLs, or Windows runtime security)
+
+FROM python:3.11-slim@sha256:4d60c497e411b0e008d5fcfc4fdf4c7fbdbbcda3733b1e389d469efb507204f6
+
+# Create non-root unprivileged test user
+RUN groupadd -g 10001 testgroup && \
+    useradd -u 10001 -g testgroup -s /bin/bash -m testuser
+
+WORKDIR /app
+
+# Copy dependency definition and install requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt pytest
+
+# Copy repository source files
+COPY --chown=testuser:testgroup . .
+
+# Set unprivileged user
+USER testuser
+
+# Set environment variables for isolated hermetic test run
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    TMPDIR=/tmp
+
+# Execute platform-neutral tests and repository secret scanner
+CMD ["python", "scripts/run_docker_tests.py"]

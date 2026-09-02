@@ -46,17 +46,17 @@ This pull request establishes Phase 1 Windows portability, standalone executable
 
 ## 2. Verified GitHub Actions CI Results
 
-- **Workflow Run**: `33620170728`
-- **Workflow Link**: [https://github.com/koppot/cloudbackup-windows/actions/runs/33620170728](https://github.com/koppot/cloudbackup-windows/actions/runs/33620170728)
-- **Overall Status**: **PASSED (100% Success across 5 jobs)**
+- **Workflow Run**: `33620733985` / `33620738586`
+- **Workflow Link**: [https://github.com/koppot/cloudbackup-windows/actions/runs/33620733985](https://github.com/koppot/cloudbackup-windows/actions/runs/33620733985)
+- **Overall Status**: **PASSED (100% Success across all 5 jobs)**
 
 | Job Name | Runner | Status | Duration |
 |---|---|---|---:|
-| `Unit Tests on Windows (Python 3.10)` | `windows-latest` | ✓ PASSED | 30s |
+| `Unit Tests on Windows (Python 3.10)` | `windows-latest` | ✓ PASSED | 29s |
 | `Unit Tests on Windows (Python 3.11)` | `windows-latest` | ✓ PASSED | 31s |
-| `Unit Tests on Windows (Python 3.12)` | `windows-latest` | ✓ PASSED | 23s |
-| `Platform-Neutral Unit Tests` | `ubuntu-latest` | ✓ PASSED | 14s |
-| `Build Executable & Installer` | `windows-latest` | ✓ PASSED | 2m 0s |
+| `Unit Tests on Windows (Python 3.12)` | `windows-latest` | ✓ PASSED | 30s |
+| `Platform-Neutral Unit Tests` | `ubuntu-latest` | ✓ PASSED | 11s |
+| `Build Executable & Installer` | `windows-latest` | ✓ PASSED | 2m 18s |
 
 ### Artifact & Checksum Hashes
 - **Artifact Zip**: `CloudBackup-Windows-x64-Release` (ID: `9842645745`, Size: 56,267,998 bytes)
@@ -65,11 +65,25 @@ This pull request establishes Phase 1 Windows portability, standalone executable
 
 ---
 
-## 3. Manual Clean-Windows-VM Acceptance Checklist (15 Gates)
+## 3. Supplementary Platform-Neutral Docker Testing
 
-Before merging or publishing a tagged release, complete the following gates on a fresh Windows 11 x64 virtual machine:
+> [!NOTE]
+> **LABEL: SUPPLEMENTARY PLATFORM-NEUTRAL VALIDATION ONLY**
+> Docker testing provides hermetic regression testing and secret scanning. It does **NOT** validate Windows installer compilation, UAC elevation, `ProgramData` ACLs, Task Scheduler, or Windows runtime security controls.
 
-1. [ ] **Download Artifact**: Download `CloudBackup-Windows-x64-Release` from CI run `33620170728`.
+### Hardened Container Setup
+- Base Image: `python:3.11-slim@sha256:4d60c497e411b0e008d5fcfc4fdf4c7fbdbbcda3733b1e389d469efb507204f6`
+- Execution: Non-root user (`uid=10001`), `--read-only`, `--network none`, `--cap-drop ALL`, `--security-opt no-new-privileges`, `--tmpfs /tmp`.
+- Secret Scanner (`scripts/scan_secrets.py`): Verified 0 credentials, 0 OAuth tokens, 0 private keys, and 0 rclone configs present in codebase.
+- Platform-Neutral Tests: 19/19 passed cleanly (`tests/test_dedup.py`, `tests/test_rotation.py`, `tests/test_schema.py`, `tests/test_subprocess_safety.py`, `tests/test_resource_resolution.py`).
+
+---
+
+## 4. Manual Clean-Windows-VM Acceptance Checklist (15 Gates)
+
+Before publishing a stable release or using CloudBackup to protect production data, complete the following gates on a fresh Windows 11 x64 virtual machine:
+
+1. [ ] **Download Artifact**: Download `CloudBackup-Windows-x64-Release` from CI run `33620733985`.
 2. [ ] **Verify Hash**: Confirm artifact SHA-256 digest matches `d791e62691f0aa4b85e5c2b96509d499c5c0d24bd86cbbb7fcb4a89b910c8db4`.
 3. [ ] **Clean VM Isolation**: Verify test VM has no pre-existing Python, Git, pip, or rclone.
 4. [ ] **Install & Directory Check**: Execute `CloudBackup-Setup.exe`; confirm binaries under `C:\Program Files\CloudBackup` and data dirs under `C:\ProgramData\CloudBackup`.
