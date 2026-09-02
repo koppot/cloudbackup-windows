@@ -72,10 +72,10 @@ jobs:
           $manifest = Get-Content shared\rclone_manifest.json | ConvertFrom-Json
           $expectedHash = $manifest.expected_sha256.ToLower()
           $actualHash = (Get-FileHash -Algorithm SHA256 bin\rclone.exe).Hash.ToLower()
-          
+
           Write-Host "Expected SHA-256: $expectedHash"
           Write-Host "Actual SHA-256:   $actualHash"
-          
+
           if ($actualHash -ne $expectedHash) {
               Write-Error "Fail-closed check failed: Downloaded rclone.exe hash mismatch!"
               exit 1
