@@ -1,0 +1,8 @@
+{
+  "pinned_version": "v1.68.2",
+  "min_supported_version": "v1.50.0",
+  "max_tested_version": "v1.99.9",
+  "architecture": "windows-amd64",
+  "expected_sha256": "4b68e980313f0607d72df7ee6665796f64240726d40fb1764654b097b0a8ef11",
+  "bundled_binary_relative_path": "bin/rclone.exe"
+}

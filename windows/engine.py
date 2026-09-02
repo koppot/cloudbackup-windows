@@ -2,7 +2,7 @@
 windows/engine.py — rclone engine for Windows host (supermicro.local).
 
 Implements Windows-specific backup execution, pre-hooks, Google Drive OAuth setup wizard,
-integrity check (rclone check), dry-run restore tests, and PowerShell Task Scheduler integration.
+integrity check (rclone check), dry-run restore tests, and Task Scheduler management.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import re
-import shlex
 import subprocess
 import sys
 import threading
@@ -24,24 +23,35 @@ from typing import Any, Dict, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared import database as db
+from shared.paths import (
+    get_default_db_path,
+    get_default_rclone_conf_path,
+    get_log_dir,
+    get_temp_dir,
+    validate_local_path,
+)
+from shared.rclone import resolve_rclone_binary
+from shared.subprocess_utils import redact_secrets, run_safe_subprocess
 
 log = logging.getLogger(__name__)
 
-DB_PATH = os.environ.get("DB_PATH", r"C:\ProgramData\CloudBackup\state.db")
-RCLONE_BIN = os.environ.get("RCLONE_BIN", r"C:\ProgramFiles\rclone\rclone.exe")
-RCLONE_CONF = os.environ.get("RCLONE_CONF", r"C:\ProgramData\CloudBackup\rclone.conf")
-LOG_DIR = os.environ.get("LOG_DIR", r"C:\ProgramData\CloudBackup\logs")
+DB_PATH = str(get_default_db_path())
+RCLONE_CONF = str(get_default_rclone_conf_path())
+LOG_DIR = str(get_log_dir())
 HOST_NAME = os.environ.get("HOST_NAME", "supermicro.local")
 
 
-
 class WindowsBackupEngine:
-    """Backup engine wrapper for Windows 10 host."""
+    """Backup engine wrapper for Windows host."""
 
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self._running_job: dict = {}
         self._lock = threading.Lock()
+
+    def _get_rclone_bin(self) -> str:
+        bin_path, _ = resolve_rclone_binary()
+        return str(bin_path)
 
     def get_running_job(self) -> dict:
         with self._lock:
@@ -61,7 +71,7 @@ class WindowsBackupEngine:
         if not remotes:
             remotes = db.get_remotes(db_path=self.db_path)
             if not remotes:
-                raise RuntimeError("No configured Google Drive remotes")
+                raise RuntimeError("No configured Google Drive remotes available.")
 
         sources = db.get_sources(host="supermicro.local", db_path=self.db_path)
         source_paths = [s["path"] for s in sources if s["data_class"] == job["data_class"] and s["enabled"]]
@@ -72,7 +82,7 @@ class WindowsBackupEngine:
                 source_paths.append(pkg_manifest)
 
         if not source_paths:
-            log.warning("No source paths for job %s", job["name"])
+            log.warning("No source paths configured for job %s", job["name"])
             return -1
 
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -81,7 +91,6 @@ class WindowsBackupEngine:
 
         primary_remote = remotes[0]
 
-        # ── Single Source Deduplication Scan ──
         dedup_result = scan_and_deduplicate(
             source_paths=source_paths,
             host="supermicro.local",
@@ -115,13 +124,14 @@ class WindowsBackupEngine:
             }
 
         has_manifest = bool(dedup_result["to_upload"])
+        rclone_bin = self._get_rclone_bin()
 
         def _worker_copy(r: dict) -> dict:
             log_path = str(log_dir / f"run-{run_id}-remote-{r['id']}.log")
             crypt = r["crypt_remote"].rstrip(":")
             dest = f"{crypt}:{HOST_NAME}/{job['data_class']}"
             cmd = [
-                RCLONE_BIN, "copy",
+                rclone_bin, "copy",
                 "--config", RCLONE_CONF,
                 "--log-file", log_path, "--log-level", "INFO",
             ]
@@ -135,18 +145,16 @@ class WindowsBackupEngine:
                 cmd.extend(source_paths)
             cmd.append(dest)
 
-
             target_id = db.create_run_target(
                 run_id=run_id, remote_id=r["id"], target_role="primary",
-                rclone_command=shlex.join(cmd), log_path=log_path, db_path=self.db_path,
+                rclone_command=" ".join(cmd), log_path=log_path, db_path=self.db_path,
             )
 
-            log.info("Windows Parallel Worker [remote=%s]: %s", r["name"], shlex.join(cmd))
-            proc = subprocess.run(cmd, capture_output=True, text=True)
-            status = "success" if proc.returncode == 0 else "failed"
+            res = run_safe_subprocess(cmd)
+            status = "success" if res.success else "failed"
 
-            db.finish_run_target(target_id, status, proc.returncode, 0, 0, 0, 1 if proc.returncode != 0 else 0, self.db_path)
-            return {"remote_id": r["id"], "remote_name": r["name"], "status": status, "exit_code": proc.returncode}
+            db.finish_run_target(target_id, status, res.exit_code, 0, 0, 0, 1 if not res.success else 0, self.db_path)
+            return {"remote_id": r["id"], "remote_name": r["name"], "status": status, "exit_code": res.exit_code}
 
         results = []
         with ThreadPoolExecutor(max_workers=len(remotes)) as executor:
@@ -172,15 +180,15 @@ class WindowsBackupEngine:
         return run_id
 
     def _run_packages_pre_hook(self) -> Optional[str]:
-
-        """Runs PowerShell Get-Package to export installed package manifest."""
+        """Runs PowerShell Get-Package export via array-based subprocess."""
         manifest_dir = Path(LOG_DIR).parent / "packages"
         manifest_dir.mkdir(parents=True, exist_ok=True)
         manifest_path = manifest_dir / "windows-packages.csv"
         try:
-            ps_cmd = f"Get-Package | Export-Csv -Path '{manifest_path}' -NoTypeInformation"
-            subprocess.run(["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd], capture_output=True, timeout=30)
-            if manifest_path.exists():
+            cmd = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                   "-Command", f"Get-Package | Export-Csv -Path '{manifest_path}' -NoTypeInformation"]
+            res = run_safe_subprocess(cmd, timeout=30)
+            if res.success and manifest_path.exists():
                 return str(manifest_path)
         except Exception as exc:
             log.error("Error generating Windows package manifest: %s", exc)
@@ -188,23 +196,35 @@ class WindowsBackupEngine:
 
     def pause(self) -> None:
         db.set_system_state("PAUSED", db_path=self.db_path)
-        try:
-            subprocess.run(
-                ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", "Disable-ScheduledTask -TaskName 'ADCBackup-Run' -ErrorAction SilentlyContinue"],
-                capture_output=True, timeout=10,
-            )
-        except Exception as exc:
-            log.error("PowerShell Task Scheduler pause failed: %s", exc)
+        self.disable_scheduler()
 
     def resume(self) -> None:
         db.set_system_state("ACTIVE", db_path=self.db_path)
+        self.enable_scheduler()
+
+    def enable_scheduler(self) -> bool:
+        """Idempotently enable the Windows Task Scheduler task using schtasks.exe."""
         try:
-            subprocess.run(
-                ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", "Enable-ScheduledTask -TaskName 'ADCBackup-Run' -ErrorAction SilentlyContinue"],
-                capture_output=True, timeout=10,
+            res = run_safe_subprocess(
+                ["schtasks.exe", "/Change", "/TN", "CloudBackup-Run", "/ENABLE"],
+                timeout=10,
             )
+            return res.success
         except Exception as exc:
-            log.error("PowerShell Task Scheduler resume failed: %s", exc)
+            log.error("Failed to enable Windows Task Scheduler task: %s", exc)
+            return False
+
+    def disable_scheduler(self) -> bool:
+        """Idempotently disable the Windows Task Scheduler task using schtasks.exe."""
+        try:
+            res = run_safe_subprocess(
+                ["schtasks.exe", "/Change", "/TN", "CloudBackup-Run", "/DISABLE"],
+                timeout=10,
+            )
+            return res.success
+        except Exception as exc:
+            log.error("Failed to disable Windows Task Scheduler task: %s", exc)
+            return False
 
     def is_paused(self) -> bool:
         return db.get_system_state(db_path=self.db_path) == "PAUSED"
@@ -214,38 +234,37 @@ class WindowsBackupEngine:
         if not remote:
             return {"ok": False, "output": "No active remote configured"}
         crypt = remote["crypt_remote"].rstrip(":")
-        cmd = [RCLONE_BIN, "check", f"{crypt}:{HOST_NAME}", "--config", RCLONE_CONF]
-        try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            return {"ok": res.returncode == 0, "output": (res.stdout + res.stderr)[-1000:]}
-        except Exception as exc:
-            return {"ok": False, "output": str(exc)}
+        rclone_bin = self._get_rclone_bin()
+        cmd = [rclone_bin, "check", f"{crypt}:{HOST_NAME}", "--config", RCLONE_CONF]
+        res = run_safe_subprocess(cmd, timeout=120)
+        return {"ok": res.success, "output": (res.stdout + res.stderr)[-1000:]}
 
     def run_restore_test(self) -> dict:
         remote = db.get_active_remote(db_path=self.db_path)
         if not remote:
             return {"ok": False, "output": "No active remote configured"}
-        staging_dir = r"C:\ProgramData\adc-backup\restore_test"
+        staging_dir = str(get_temp_dir() / "restore_test")
         os.makedirs(staging_dir, exist_ok=True)
         crypt = remote["crypt_remote"].rstrip(":")
-        cmd = [RCLONE_BIN, "copy", f"{crypt}:{HOST_NAME}/config", staging_dir, "--dry-run", "--config", RCLONE_CONF]
-        try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            return {"ok": res.returncode == 0, "output": (res.stdout + res.stderr)[-1000:]}
-        except Exception as exc:
-            return {"ok": False, "output": str(exc)}
+        rclone_bin = self._get_rclone_bin()
+        cmd = [rclone_bin, "copy", f"{crypt}:{HOST_NAME}/config", staging_dir, "--dry-run", "--config", RCLONE_CONF]
+        res = run_safe_subprocess(cmd, timeout=60)
+        return {"ok": res.success, "output": (res.stdout + res.stderr)[-1000:]}
 
     def setup_wizard(self) -> dict:
         remotes = db.get_remotes(db_path=self.db_path)
         next_idx = len(remotes) + 1
         name = f"gdrive{next_idx}"
+        rclone_bin = self._get_rclone_bin()
 
         try:
+            creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
             proc = subprocess.Popen(
-                [RCLONE_BIN, "authorize", "drive", "--config", RCLONE_CONF],
+                [rclone_bin, "authorize", "drive", "--config", RCLONE_CONF],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                creationflags=creation_flags,
             )
             auth_url = None
             start = datetime.now(timezone.utc).timestamp()
@@ -274,7 +293,7 @@ class WindowsBackupEngine:
             }
         except Exception as exc:
             log.error("Error launching setup wizard: %s", exc)
-            return {"error": str(exc)}
+            return {"error": redact_secrets(str(exc))}
 
     def _background_authorize_listener(self, proc: subprocess.Popen, name: str):
         try:
@@ -300,14 +319,14 @@ token = {json.dumps(token_data)}
 
 [{name}_crypt]
 type = crypt
-remote = {name}:adc-backup-data
+remote = {name}:cloud-backup-data
 filename_encryption = standard
 directory_name_encryption = true
 password = SuperMicroBackup2026!Secure
 
 [{name}_secrets_crypt]
 type = crypt
-remote = {name}:adc-backup-secrets
+remote = {name}:cloud-backup-secrets
 filename_encryption = standard
 directory_name_encryption = true
 password = SuperMicroBackup2026!Secure
@@ -332,12 +351,15 @@ password = SuperMicroBackup2026!Secure
         remote = db.get_remote(rid, db_path=self.db_path)
         if not remote:
             return {"error": "Remote not found"}
+        rclone_bin = self._get_rclone_bin()
         try:
+            creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
             proc = subprocess.Popen(
-                [RCLONE_BIN, "authorize", "drive", "--config", RCLONE_CONF],
+                [rclone_bin, "authorize", "drive", "--config", RCLONE_CONF],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                creationflags=creation_flags,
             )
             auth_url = None
             start = datetime.now(timezone.utc).timestamp()
@@ -355,20 +377,18 @@ password = SuperMicroBackup2026!Secure
                 "message": f"Re-authorization initiated for {remote['name']}",
             }
         except Exception as exc:
-            return {"error": str(exc)}
+            return {"error": redact_secrets(str(exc))}
 
     def test_remote(self, rid: int) -> dict:
         remote = db.get_remote(rid, db_path=self.db_path)
         if not remote:
             return {"ok": False, "message": "Remote not found"}
         base = remote["base_remote"].rstrip(":") + ":"
-        try:
-            res = subprocess.run([RCLONE_BIN, "lsd", base, "--config", RCLONE_CONF, "--max-depth", "1"], capture_output=True, text=True, timeout=30)
-            ok = res.returncode == 0
-            db.update_remote(rid, {"status": "ok" if ok else "error"}, db_path=self.db_path)
-            return {"ok": ok, "message": "Remote connection verified." if ok else res.stderr[-200:]}
-        except Exception as exc:
-            return {"ok": False, "message": str(exc)}
+        rclone_bin = self._get_rclone_bin()
+        res = run_safe_subprocess([rclone_bin, "lsd", base, "--config", RCLONE_CONF, "--max-depth", "1"], timeout=30)
+        ok = res.success
+        db.update_remote(rid, {"status": "ok" if ok else "error"}, db_path=self.db_path)
+        return {"ok": ok, "message": "Remote connection verified." if ok else (res.stderr[-200:] or "Connection failed")}
 
     def delete_remote(self, rid: int) -> dict:
         remote = db.get_remote(rid, db_path=self.db_path)
@@ -379,7 +399,6 @@ password = SuperMicroBackup2026!Secure
 
         db.delete_remote(rid, db_path=self.db_path)
 
-        # Clean sections from rclone.conf
         if os.path.exists(RCLONE_CONF):
             try:
                 cfg = configparser.ConfigParser()
