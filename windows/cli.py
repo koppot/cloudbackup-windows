@@ -42,6 +42,7 @@ def main() -> int:
     parser.add_argument("--server", action="store_true", default=True, help="Run the local web UI server (default)")
     parser.add_argument("--port", type=int, default=8765, help="Web UI server port (default: 8765)")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Web UI bind address (default: 127.0.0.1)")
+    parser.add_argument("--no-browser", action="store_true", default=False, help="Do not automatically open the browser on start")
     parser.add_argument("--verify", action="store_true", help="Run cloud backup verification check and exit")
     parser.add_argument("--version", action="store_true", help="Show application version and exit")
 
@@ -70,22 +71,26 @@ def main() -> int:
     # Single instance lock for server execution
     lock = SingleInstanceLock()
     if not lock.acquire():
-        # Server already running — just open the browser to the existing instance.
-        import webbrowser
-        webbrowser.open(f"http://{args.host}:{args.port}/")
-        print("Another instance of CloudBackup is already running. Opening browser.")
+        if not args.no_browser:
+            import webbrowser
+            webbrowser.open(f"http://{args.host}:{args.port}/")
+            print("Another instance of CloudBackup is already running. Opening browser.")
+        else:
+            print("Another instance of CloudBackup is already running.")
         return 0
 
     try:
-        import threading
-        import webbrowser
+        if not args.no_browser:
+            import threading
+            import webbrowser
 
-        def _open_browser():
-            import time
-            time.sleep(1.2)  # Give the server a moment to bind
-            webbrowser.open(f"http://{args.host}:{args.port}/")
+            def _open_browser():
+                import time
+                time.sleep(1.2)  # Give the server a moment to bind
+                webbrowser.open(f"http://{args.host}:{args.port}/")
 
-        threading.Thread(target=_open_browser, daemon=True).start()
+            threading.Thread(target=_open_browser, daemon=True).start()
+
         log.info("Launching CloudBackup Windows Server on http://%s:%d", args.host, args.port)
         run_windows_server(host=args.host, port=args.port)
         return 0
