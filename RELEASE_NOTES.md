@@ -1,7 +1,7 @@
 # Release Notes — Phase 1: Windows Portability & Nontechnical Installer
 
-**Version**: `v1.0.0-phase1`  
-**Target Platform**: Windows 10 / 11 x64  
+**Version**: `v1.0.0-phase1`
+**Target Platform**: Windows 10 / 11 x64
 
 ---
 
