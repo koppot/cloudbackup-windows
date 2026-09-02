@@ -27,5 +27,3 @@ rclone.conf
 tmp/
 temp/
 test-output/
-acceptance-output/
-tools/acceptance/output/

@@ -5,7 +5,7 @@
 # ────────────────────────────
 # Secret and Private Config
 # ────────────────────────────
-config.yaml              # Your personal configuration — NEVER commit this
+config.yaml              # Personal configuration — NEVER commit
 *.key                    # Encryption keys
 *.pem                    # TLS/SSL certificates
 *.env                    # Environment variable files
@@ -20,7 +20,7 @@ rclone.conf              # Contains OAuth tokens and remote configs
 # ────────────────────────────
 # Database and State Files
 # ────────────────────────────
-*.db                     # SQLite databases (may contain file path metadata)
+*.db                     # SQLite databases
 *.db-journal
 state.json               # Runtime state file
 state.json.bak
@@ -37,9 +37,6 @@ logs/
 catalog_backups/
 restore_test/
 test-output/
-acceptance-output/
-tools/acceptance/output/
-C:\CloudBackup-Acceptance-Test\
 
 # ────────────────────────────
 # Python & Packaging
